@@ -43,6 +43,7 @@ Backend API untuk CarbonTracker menggunakan **Node.js**, **Express**, dan **Pris
   npx prisma generate
   ```
 Prisma akan bikin tabel baru di MySQL sesuai model yang ada pada schema.prisma.
+
 4. Jalankan server
   ```bash
   npm run dev
