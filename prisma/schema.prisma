@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  company_id   Int       @id @default(autoincrement())
+  name         String
+  address      String?
+  industry     String?
+  users        User[]
+  inputs       EmissionInput[]
+  certificates Certificate[]
+}
+
+model User {
+  user_id    Int      @id @default(autoincrement())
+  company_id Int
+  name       String
+  email      String   @unique
+  password   String
+  created_at DateTime @default(now())
+
+  company Company @relation(fields: [company_id], references: [company_id])
+}
+
+model EmissionSource {
+  source_id       Int       @id @default(autoincrement())
+  name            String
+  unit            String
+  emission_factor Float
+  details         EmissionInputDetail[]
+}
+
+model EmissionInput {
+  input_id   Int       @id @default(autoincrement())
+  company_id Int
+  month      Int
+  year       Int
+  created_at DateTime @default(now())
+
+  company Company @relation(fields: [company_id], references: [company_id])
+  details EmissionInputDetail[]
+  result  EmissionResult?
+}
+
+model EmissionInputDetail {
+  detail_id      Int     @id @default(autoincrement())
+  input_id       Int
+  source_id      Int
+  value          Float
+  emission_value Float
+
+  input  EmissionInput   @relation(fields: [input_id], references: [input_id])
+  source EmissionSource  @relation(fields: [source_id], references: [source_id])
+}
+
+model EmissionResult {
+  result_id      Int      @id @default(autoincrement())
+  input_id       Int      @unique
+  total_emission Float
+  status         String?
+
+  input EmissionInput @relation(fields: [input_id], references: [input_id])
+}
+
+model Certificate {
+  certificate_id Int      @id @default(autoincrement())
+  company_id     Int
+  issue_date     DateTime
+  expiry_date    DateTime?
+  level          String?
+
+  company Company @relation(fields: [company_id], references: [company_id])
+}
