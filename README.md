@@ -29,8 +29,13 @@ Backend API untuk CarbonTracker menggunakan **Node.js**, **Express**, dan **Pris
 2. Setup environment
   Buat file .env di root project:
   ```bash
-  DATABASE_URL="mysql://username:password@localhost:3306/carbontracker"
+  DATABASE_URL="mysql://username:password@localhost:3306/inventory_db"
   ```
+   atau 
+  ```bash
+  DATABASE_URL="mysql://root@localhost:3306/carbontracker"
+  ```
+   sesuaikan username, password, dan inventory_db dengan database MySQL anda.
 
 3. Setup Prisma
   ```bash
