@@ -1,0 +1,360 @@
+const { PrismaClient } = require("../../generated/prisma");
+const { getCurrentMonthYear } = require('../utils/dateFormatter');
+
+const prisma = new PrismaClient();
+
+// GET - Get all emission inputs
+const getAllEmissionInputs = async (req, res) => {
+  try {
+    const emissionInputs = await prisma.emissionInput.findMany({
+      include: {
+        company: true,
+        details: {
+          include: {
+            source: true
+          }
+        },
+        result: true
+      }
+    });
+    
+    res.json({
+      success: true,
+      data: emissionInputs,
+      message: 'Emission inputs retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting emission inputs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve emission inputs',
+      error: error.message
+    });
+  }
+};
+
+// GET - Get emission input by ID
+const getEmissionInputById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const emissionInput = await prisma.emissionInput.findUnique({
+      where: { input_id: parseInt(id) },
+      include: {
+        company: true,
+        details: {
+          include: {
+            source: true
+          }
+        },
+        result: true
+      }
+    });
+
+    if (!emissionInput) {
+      return res.status(404).json({
+        success: false,
+        message: 'Emission input not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: emissionInput,
+      message: 'Emission input retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting emission input:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve emission input',
+      error: error.message
+    });
+  }
+};
+
+// POST - Create new emission input
+const createEmissionInput = async (req, res) => {
+  try {
+    const { company_id, month, year } = req.body;
+
+    // Validation
+    if (!company_id || !month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Company ID, month, and year are required'
+      });
+    }
+
+    // Check if company exists
+    const company = await prisma.company.findUnique({
+      where: { company_id: parseInt(company_id) }
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    // Check if input already exists for this company, month, and year
+    const existingInput = await prisma.emissionInput.findFirst({
+      where: {
+        company_id: parseInt(company_id),
+        month: parseInt(month),
+        year: parseInt(year)
+      }
+    });
+
+    if (existingInput) {
+      return res.status(409).json({
+        success: false,
+        message: 'Emission input already exists for this company, month, and year'
+      });
+    }
+
+    const emissionInput = await prisma.emissionInput.create({
+      data: {
+        company_id: parseInt(company_id),
+        month: parseInt(month),
+        year: parseInt(year)
+      },
+      include: {
+        company: true,
+        details: {
+          include: {
+            source: true
+          }
+        },
+        result: true
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: emissionInput,
+      message: 'Emission input created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating emission input:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create emission input',
+      error: error.message
+    });
+  }
+};
+
+// POST - Create emission input with details (integrated input)
+const createEmissionInputWithDetails = async (req, res) => {
+  try {
+    const { company_id, emission_data } = req.body;
+
+    // Validation
+    if (!company_id || !emission_data || !Array.isArray(emission_data)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Company ID and emission_data array are required'
+      });
+    }
+
+    // Check if company exists
+    const company = await prisma.company.findUnique({
+      where: { company_id: parseInt(company_id) }
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    // Get current month and year
+    const { month, year } = getCurrentMonthYear();
+
+    // Check if input already exists for this company, month, and year
+    const existingInput = await prisma.emissionInput.findFirst({
+      where: {
+        company_id: parseInt(company_id),
+        month: month,
+        year: year
+      }
+    });
+
+    if (existingInput) {
+      return res.status(409).json({
+        success: false,
+        message: `Emission input already exists for ${company.name} in ${month}/${year}`
+      });
+    }
+
+    // Validate emission data
+    for (const item of emission_data) {
+      if (!item.source_name || !item.value) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each emission data must have source_name and value'
+        });
+      }
+    }
+
+    // Get all emission sources to validate source names
+    const emissionSources = await prisma.emissionSource.findMany();
+    const sourceMap = {};
+    emissionSources.forEach(source => {
+      sourceMap[source.name.toLowerCase()] = source;
+    });
+
+    // Validate source names and prepare details
+    const detailsToCreate = [];
+    for (const item of emission_data) {
+      const source = sourceMap[item.source_name.toLowerCase()];
+      if (!source) {
+        return res.status(404).json({
+          success: false,
+          message: `Emission source '${item.source_name}' not found`
+        });
+      }
+
+      detailsToCreate.push({
+        source_id: source.source_id,
+        value: parseFloat(item.value),
+        emission_value: parseFloat(item.value) * source.emission_factor
+      });
+    }
+
+    // Create emission input with details in transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create emission input
+      const emissionInput = await tx.emissionInput.create({
+        data: {
+          company_id: parseInt(company_id),
+          month: month,
+          year: year
+        }
+      });
+
+      // Create emission input details
+      const details = [];
+      for (const detailData of detailsToCreate) {
+        const detail = await tx.emissionInputDetail.create({
+          data: {
+            input_id: emissionInput.input_id,
+            source_id: detailData.source_id,
+            value: detailData.value,
+            emission_value: detailData.emission_value
+          },
+          include: {
+            source: true
+          }
+        });
+        details.push(detail);
+      }
+
+      return {
+        emissionInput: {
+          ...emissionInput,
+          company: company,
+          details: details,
+          result: null
+        }
+      };
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result.emissionInput,
+      message: 'Emission input with details created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating emission input with details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create emission input with details',
+      error: error.message
+    });
+  }
+};
+
+// DELETE - Delete emission input by ID
+const deleteEmissionInput = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if emission input exists
+    const existingInput = await prisma.emissionInput.findUnique({
+      where: { input_id: parseInt(id) }
+    });
+
+    if (!existingInput) {
+      return res.status(404).json({
+        success: false,
+        message: 'Emission input not found'
+      });
+    }
+
+    // Delete emission input (cascade will handle related records)
+    await prisma.emissionInput.delete({
+      where: { input_id: parseInt(id) }
+    });
+
+    res.json({
+      success: true,
+      message: 'Emission input deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting emission input:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete emission input',
+      error: error.message
+    });
+  }
+};
+
+// GET - Get emission inputs by company
+const getEmissionInputsByCompany = async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    
+    const emissionInputs = await prisma.emissionInput.findMany({
+      where: { company_id: parseInt(companyId) },
+      include: {
+        company: true,
+        details: {
+          include: {
+            source: true
+          }
+        },
+        result: true
+      },
+      orderBy: [
+        { year: 'desc' },
+        { month: 'desc' }
+      ]
+    });
+
+    res.json({
+      success: true,
+      data: emissionInputs,
+      message: 'Emission inputs retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting emission inputs by company:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve emission inputs',
+      error: error.message
+    });
+  }
+};
+
+module.exports = {
+  getAllEmissionInputs,
+  getEmissionInputById,
+  createEmissionInput,
+  createEmissionInputWithDetails,
+  deleteEmissionInput,
+  getEmissionInputsByCompany
+};
