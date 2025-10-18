@@ -7,6 +7,8 @@ const userRoutes = require('./routes/userRoutes');
 const emissionSourceRoutes = require('./routes/emissionSourceRoutes');
 const emissionInputRoutes = require('./routes/emissionInputRoutes');
 const emissionDetailRoutes = require('./routes/emissionDetailRoutes');
+const emissionResultRoutes = require('./routes/emissionResultRoutes');
+const certificateRoutes = require('./routes/certificateRoutes');
 
 // Create Express app
 const app = express();
@@ -37,6 +39,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/emission-sources', emissionSourceRoutes);
 app.use('/api/emission-inputs', emissionInputRoutes);
 app.use('/api/emission-details', emissionDetailRoutes);
+app.use('/api/emission-results', emissionResultRoutes);
+app.use('/api/certificates', certificateRoutes);
 
 // 404 handler
 app.use((req, res) => {

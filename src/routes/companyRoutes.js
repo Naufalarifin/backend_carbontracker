@@ -5,6 +5,7 @@ const {
   getCompanyById,
   createCompany,
   createCompanyForUser,
+  updateCompany,
   deleteCompany
 } = require('../controllers/companyController');
 
@@ -19,6 +20,9 @@ router.post('/', createCompany);
 
 // POST /api/companies/for-user - Create company for existing user
 router.post('/for-user', createCompanyForUser);
+
+// PUT /api/companies/:id - Update company by ID
+router.put('/:id', updateCompany);
 
 // DELETE /api/companies/:id - Delete company by ID
 router.delete('/:id', deleteCompany);

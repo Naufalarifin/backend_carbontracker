@@ -66,7 +66,15 @@ const getCompanyById = async (req, res) => {
 // POST - Create new company
 const createCompany = async (req, res) => {
   try {
-    const { name, address, industry } = req.body;
+    const { 
+      name, 
+      address, 
+      jenis_perusahaan, 
+      jumlah_karyawan, 
+      unit_produk_perbulan, 
+      pendapatan_perbulan, 
+      ton_barang_perbulan 
+    } = req.body;
 
     // Validation
     if (!name) {
@@ -80,7 +88,11 @@ const createCompany = async (req, res) => {
       data: {
         name,
         address: address || null,
-        industry: industry || null
+        jenis_perusahaan: jenis_perusahaan || null,
+        jumlah_karyawan: jumlah_karyawan ? parseInt(jumlah_karyawan) : null,
+        unit_produk_perbulan: unit_produk_perbulan ? parseInt(unit_produk_perbulan) : null,
+        pendapatan_perbulan: pendapatan_perbulan ? parseFloat(pendapatan_perbulan) : null,
+        ton_barang_perbulan: ton_barang_perbulan ? parseFloat(ton_barang_perbulan) : null
       },
       include: {
         users: true,
@@ -107,7 +119,17 @@ const createCompany = async (req, res) => {
 // POST - Create company for existing user
 const createCompanyForUser = async (req, res) => {
   try {
-    const { name, address, industry, user_id } = req.body;
+    const { 
+      name, 
+      address, 
+      industry, 
+      jenis_perusahaan, 
+      jumlah_karyawan, 
+      unit_produk_perbulan, 
+      pendapatan_perbulan, 
+      ton_barang_perbulan, 
+      user_id 
+    } = req.body;
 
     // Validation
     if (!name || !user_id) {
@@ -144,7 +166,12 @@ const createCompanyForUser = async (req, res) => {
         data: {
           name,
           address: address || null,
-          industry: industry || null
+          industry: industry || null,
+          jenis_perusahaan: jenis_perusahaan || null,
+          jumlah_karyawan: jumlah_karyawan ? parseInt(jumlah_karyawan) : null,
+          unit_produk_perbulan: unit_produk_perbulan ? parseInt(unit_produk_perbulan) : null,
+          pendapatan_perbulan: pendapatan_perbulan ? parseFloat(pendapatan_perbulan) : null,
+          ton_barang_perbulan: ton_barang_perbulan ? parseFloat(ton_barang_perbulan) : null
         }
       });
 
@@ -173,6 +200,68 @@ const createCompanyForUser = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to create company for user',
+      error: error.message
+    });
+  }
+};
+
+// PUT - Update company by ID
+const updateCompany = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      name, 
+      address, 
+      jenis_perusahaan, 
+      jumlah_karyawan, 
+      unit_produk_perbulan, 
+      pendapatan_perbulan, 
+      ton_barang_perbulan 
+    } = req.body;
+
+    // Validation
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Company name is required'
+      });
+    }
+
+    const company = await prisma.company.update({
+      where: { company_id: parseInt(id) },
+      data: {
+        name,
+        address: address || null,
+        jenis_perusahaan: jenis_perusahaan || null,
+        jumlah_karyawan: jumlah_karyawan ? parseInt(jumlah_karyawan) : null,
+        unit_produk_perbulan: unit_produk_perbulan ? parseInt(unit_produk_perbulan) : null,
+        pendapatan_perbulan: pendapatan_perbulan ? parseFloat(pendapatan_perbulan) : null,
+        ton_barang_perbulan: ton_barang_perbulan ? parseFloat(ton_barang_perbulan) : null
+      },
+      include: {
+        users: true,
+        inputs: true,
+        certificates: true
+      }
+    });
+
+    res.json({
+      success: true,
+      data: company,
+      message: 'Company updated successfully'
+    });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    console.error('Error updating company:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update company',
       error: error.message
     });
   }
@@ -219,5 +308,6 @@ module.exports = {
   getCompanyById,
   createCompany,
   createCompanyForUser,
+  updateCompany,
   deleteCompany
 };

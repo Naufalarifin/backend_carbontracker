@@ -11,6 +11,8 @@ app.listen(PORT, () => {
   console.log(`⚡ Emission Sources API: http://localhost:${PORT}/api/emission-sources`);
   console.log(`📝 Emission Inputs API: http://localhost:${PORT}/api/emission-inputs`);
   console.log(`📋 Emission Details API: http://localhost:${PORT}/api/emission-details`);
+  console.log(`📊 Emission Results API: http://localhost:${PORT}/api/emission-results`);
+  console.log(`🏆 Certificates API: http://localhost:${PORT}/api/certificates`);
 });
 
 // Graceful shutdown

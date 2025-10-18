@@ -8,74 +8,82 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Company {
-  company_id   Int       @id @default(autoincrement())
-  name         String
-  address      String?
-  industry     String?
-  users        User[]
-  inputs       EmissionInput[]
-  certificates Certificate[]
-}
-
-model User {
-  user_id    Int      @id @default(autoincrement())
-  company_id Int?
-  name       String
-  email      String   @unique
-  password   String
-  created_at DateTime @default(now())
-
-  company Company? @relation(fields: [company_id], references: [company_id])
-}
-
-model EmissionSource {
-  source_id       Int       @id @default(autoincrement())
-  name            String
-  unit            String
-  emission_factor Float
-  kategori        String?
-  details         EmissionInputDetail[]
-}
-
-model EmissionInput {
-  input_id   Int       @id @default(autoincrement())
-  company_id Int
-  month      Int
-  year       Int
-  created_at DateTime @default(now())
-
-  company Company @relation(fields: [company_id], references: [company_id])
-  details EmissionInputDetail[]
-  result  EmissionResult?
-}
-
-model EmissionInputDetail {
-  detail_id      Int     @id @default(autoincrement())
-  input_id       Int
-  source_id      Int
-  value          Float
-  emission_value Float
-
-  input  EmissionInput   @relation(fields: [input_id], references: [input_id])
-  source EmissionSource  @relation(fields: [source_id], references: [source_id])
-}
-
-model EmissionResult {
-  result_id      Int      @id @default(autoincrement())
-  input_id       Int      @unique
-  total_emission Float
-  status         String?
-
-  input EmissionInput @relation(fields: [input_id], references: [input_id])
-}
-
-model Certificate {
-  certificate_id Int      @id @default(autoincrement())
+model certificate {
+  certificate_id Int       @id @default(autoincrement())
   company_id     Int
   issue_date     DateTime
   expiry_date    DateTime?
   level          String?
+  company        company   @relation(fields: [company_id], references: [company_id], map: "Certificate_company_id_fkey")
 
-  company Company @relation(fields: [company_id], references: [company_id])
+  @@index([company_id], map: "Certificate_company_id_fkey")
+}
+
+model company {
+  company_id           Int             @id @default(autoincrement())
+  name                 String
+  address              String?
+  jenis_perusahaan     String?
+  jumlah_karyawan      Int?
+  pendapatan_perbulan  Float?
+  ton_barang_perbulan  Float?
+  unit_produk_perbulan Int?
+  certificate          certificate[]
+  emissioninput        emissioninput[]
+  user                 user[]
+}
+
+model emissioninput {
+  input_id            Int                   @id @default(autoincrement())
+  company_id          Int
+  month               Int
+  year                Int
+  created_at          DateTime              @default(now())
+  company             company               @relation(fields: [company_id], references: [company_id], map: "EmissionInput_company_id_fkey")
+  emissioninputdetail emissioninputdetail[]
+  emissionresult      emissionresult?
+
+  @@index([company_id], map: "EmissionInput_company_id_fkey")
+}
+
+model emissioninputdetail {
+  detail_id      Int            @id @default(autoincrement())
+  input_id       Int
+  source_id      Int
+  value          Float
+  emission_value Float
+  emissioninput  emissioninput  @relation(fields: [input_id], references: [input_id], map: "EmissionInputDetail_input_id_fkey")
+  emissionsource emissionsource @relation(fields: [source_id], references: [source_id], map: "EmissionInputDetail_source_id_fkey")
+
+  @@index([input_id], map: "EmissionInputDetail_input_id_fkey")
+  @@index([source_id], map: "EmissionInputDetail_source_id_fkey")
+}
+
+model emissionresult {
+  result_id      Int           @id @default(autoincrement())
+  input_id       Int           @unique(map: "EmissionResult_input_id_key")
+  total_emission Float
+  rekomendasi    String?       @db.Text
+  emissioninput  emissioninput @relation(fields: [input_id], references: [input_id], map: "EmissionResult_input_id_fkey")
+}
+
+model emissionsource {
+  source_id           Int                   @id @default(autoincrement())
+  name                String
+  unit                String
+  emission_factor     Float
+  kategori            String?
+  emissioninputdetail emissioninputdetail[]
+}
+
+model user {
+  user_id    Int      @id @default(autoincrement())
+  company_id Int?
+  name       String
+  email      String   @unique(map: "User_email_key")
+  password   String
+  created_at DateTime @default(now())
+  company    company? @relation(fields: [company_id], references: [company_id], map: "User_company_id_fkey")
+
+  @@index([company_id], map: "User_company_id_fkey")
 }
