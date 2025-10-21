@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = "mysql://root:@localhost:3306/carbontracker"
+  url      = "mysql://avnadmin:AVNS_fECBo77M2yyCHFzvOiB@mysql-263738d7-naufal-d9df.c.aivencloud.com:25220/defaultdb?ssl-mode=REQUIRED"
 }
 
 model certificate {
