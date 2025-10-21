@@ -2,10 +2,20 @@ const { PrismaClient } = require("../../generated/prisma");
 
 const prisma = new PrismaClient();
 
-// GET - Get all emission sources
+// GET - Get all emission sources (filtered by user's company)
 const getAllEmissionSources = async (req, res) => {
   try {
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view emission sources'
+      });
+    }
+    
     const emissionSources = await prisma.emissionsource.findMany({
+      where: { company_id: user.company_id },
       include: {
         details: true
       }
@@ -59,25 +69,33 @@ const getEmissionSourceById = async (req, res) => {
   }
 };
 
-// POST - Create new emission source
+// POST - Create new emission source (auto-use company_id from token)
 const createEmissionSource = async (req, res) => {
   try {
-    const { name, unit, emission_factor, kategori } = req.body;
+    const { name, kategori, description } = req.body;
+    const user = req.user;
 
     // Validation
-    if (!name || !unit || !emission_factor) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        message: 'Name, unit, and emission_factor are required'
+        message: 'Name is required'
+      });
+    }
+
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to create emission sources'
       });
     }
 
     const emissionSource = await prisma.emissionsource.create({
       data: {
+        company_id: user.company_id,
         name,
-        unit,
-        emission_factor: parseFloat(emission_factor),
-        kategori: kategori || null
+        kategori: kategori || null,
+        description: description || null
       },
       include: {
         details: true

@@ -1,6 +1,10 @@
 const { PrismaClient } = require("../../generated/prisma");
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
+
+// JWT Secret Key (dalam production, gunakan environment variable)
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // GET - Get all users
 const getAllUsers = async (req, res) => {
@@ -247,9 +251,30 @@ const loginUser = async (req, res) => {
       });
     }
 
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user.user_id,
+        email: user.email,
+        name: user.name,
+        companyId: user.company_id
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     res.json({
       success: true,
-      data: user,
+      data: {
+        user: {
+          user_id: user.user_id,
+          name: user.name,
+          email: user.email,
+          company_id: user.company_id,
+          company: user.company
+        },
+        token: token
+      },
       message: 'Login successful'
     });
   } catch (error) {

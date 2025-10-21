@@ -2,15 +2,25 @@ const { PrismaClient } = require("../../generated/prisma");
 
 const prisma = new PrismaClient();
 
-// GET - Get all certificates
+// GET - Get all certificates (filtered by user's company)
 const getAllCertificates = async (req, res) => {
   try {
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view certificates'
+      });
+    }
+    
     const certificates = await prisma.certificate.findMany({
+      where: { company_id: user.company_id },
       include: {
         company: true
       },
       orderBy: {
-        issue_date: 'desc'
+        issued_date: 'desc'
       }
     });
     
@@ -200,33 +210,29 @@ const validateTwelveConsecutiveMonths = async (company_id) => {
   }
 };
 
-// POST - Create new certificate
+// POST - Create new certificate (auto-use company_id from token)
 const createCertificate = async (req, res) => {
   try {
-    const { company_id, issue_date, expiry_date } = req.body;
+    const { issued_date, valid_until } = req.body;
+    const user = req.user;
 
     // Validation
-    if (!company_id || !issue_date) {
+    if (!issued_date) {
       return res.status(400).json({
         success: false,
-        message: 'Company ID and issue date are required'
+        message: 'issued_date is required'
       });
     }
 
-    // Check if company exists
-    const company = await prisma.company.findUnique({
-      where: { company_id: parseInt(company_id) }
-    });
-
-    if (!company) {
-      return res.status(404).json({
+    if (!user.company_id) {
+      return res.status(400).json({
         success: false,
-        message: 'Company not found'
+        message: 'User must belong to a company to create certificates'
       });
     }
 
     // Validate 12 consecutive months of "Baik" level results
-    const validation = await validateTwelveConsecutiveMonths(company_id);
+    const validation = await validateTwelveConsecutiveMonths(user.company_id);
     if (!validation.valid) {
       return res.status(400).json({
         success: false,
@@ -239,33 +245,39 @@ const createCertificate = async (req, res) => {
     }
 
     // Validate dates
-    const issueDate = new Date(issue_date);
-    const expiryDate = expiry_date ? new Date(expiry_date) : null;
+    const issueDate = new Date(issued_date);
+    const expiryDate = valid_until ? new Date(valid_until) : null;
 
     if (isNaN(issueDate.getTime())) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid issue date format'
+        message: 'Invalid issued_date format'
       });
     }
 
     if (expiryDate && isNaN(expiryDate.getTime())) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid expiry date format'
+        message: 'Invalid valid_until format'
       });
     }
 
     if (expiryDate && expiryDate <= issueDate) {
       return res.status(400).json({
         success: false,
-        message: 'Expiry date must be after issue date'
+        message: 'Valid until date must be after issued date'
       });
     }
 
+    // Generate certificate number
+    const certificateCount = await prisma.certificate.count({
+      where: { company_id: user.company_id }
+    });
+    const certificateNumber = `CERT-${user.company_id}-${String(certificateCount + 1).padStart(3, '0')}`;
+
     const certificate = await prisma.certificate.create({
       data: {
-        company_id: parseInt(company_id),
+        company_id: user.company_id,
         issue_date: issueDate,
         expiry_date: expiryDate
       },
@@ -276,9 +288,14 @@ const createCertificate = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: certificate,
-      message: '🎉 Sertifikat berhasil dibuat!',
-      details: 'Sertifikat telah diterbitkan untuk perusahaan yang memenuhi syarat.',
+      data: {
+        ...certificate,
+        certificate_number: certificateNumber,
+        certificate_type: 'Carbon Footprint Certificate',
+        description: null
+      },
+      message: '🎉 Certificate created successfully!',
+      details: 'Certificate has been issued for your company.',
       validation: {
         message: validation.message,
         details: validation.details,

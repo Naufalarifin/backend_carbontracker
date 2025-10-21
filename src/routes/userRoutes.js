@@ -8,23 +8,24 @@ const {
   deleteUser,
   loginUser
 } = require('../controllers/userController');
+const { authenticateUser } = require('../middleware/authMiddleware');
 
-// GET /api/users - Get all users
-router.get('/', getAllUsers);
+// GET /api/users - Get all users (requires login)
+router.get('/', authenticateUser, getAllUsers);
 
-// GET /api/users/:id - Get user by ID
-router.get('/:id', getUserById);
+// GET /api/users/:id - Get user by ID (requires login)
+router.get('/:id', authenticateUser, getUserById);
 
-// POST /api/users - Create new user
-router.post('/', createUser);
+// POST /api/users/register - Create new user (PUBLIC - no auth required)
+router.post('/register', createUser);
 
-// POST /api/users/with-company - Create new user with company
+// POST /api/users/with-company - Create new user with company (PUBLIC - no auth required)
 router.post('/with-company', createUserWithCompany);
 
-// POST /api/users/login - Login user
+// POST /api/users/login - Login user (PUBLIC - no auth required)
 router.post('/login', loginUser);
 
-// DELETE /api/users/:id - Delete user by ID
-router.delete('/:id', deleteUser);
+// DELETE /api/users/:id - Delete user by ID (requires login)
+router.delete('/:id', authenticateUser, deleteUser);
 
 module.exports = router;

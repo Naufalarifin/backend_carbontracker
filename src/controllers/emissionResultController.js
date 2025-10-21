@@ -3,10 +3,24 @@ const aiRecommendationService = require('../services/aiRecommendationService');
 
 const prisma = new PrismaClient();
 
-// GET - Get all emission results
+// GET - Get all emission results (filtered by user's company via emissioninput)
 const getAllEmissionResults = async (req, res) => {
   try {
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view emission results'
+      });
+    }
+    
     const emissionResults = await prisma.emissionresult.findMany({
+      where: {
+        emissioninput: {
+          company_id: user.company_id
+        }
+      },
       include: {
         emissioninput: {
           include: {
@@ -18,6 +32,9 @@ const getAllEmissionResults = async (req, res) => {
             }
           }
         }
+      },
+      orderBy: {
+        result_id: 'desc'
       }
     });
     
@@ -78,28 +95,48 @@ const getEmissionResultById = async (req, res) => {
   }
 };
 
-// POST - Create new emission result
+// POST - Create new emission result (auto-use company_id from token)
 const createEmissionResult = async (req, res) => {
   try {
     const { input_id } = req.body;
+    const user = req.user;
 
     // Validation
     if (!input_id) {
       return res.status(400).json({
         success: false,
-        message: 'Input ID is required'
+        message: 'input_id is required'
       });
     }
 
-    // Check if emission input exists
-    const emissionInput = await prisma.emissioninput.findUnique({
-      where: { input_id: parseInt(input_id) }
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to create emission results'
+      });
+    }
+
+    // Check if emission input exists and belongs to user's company
+    const emissionInput = await prisma.emissioninput.findFirst({
+      where: { 
+        input_id: parseInt(input_id),
+        company_id: user.company_id
+      },
+      include: {
+        company: true,
+        emissioninputdetail: {
+          include: {
+            emissionsource: true
+          }
+        },
+        emissionresult: true
+      }
     });
 
     if (!emissionInput) {
       return res.status(404).json({
         success: false,
-        message: 'Emission input not found'
+        message: 'Emission input not found or does not belong to your company'
       });
     }
 

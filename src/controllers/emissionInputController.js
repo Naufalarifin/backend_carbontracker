@@ -12,10 +12,20 @@ prisma.$connect()
     console.error('❌ Database connection failed:', error.message);
   });
 
-// GET - Get all emission inputs
+// GET - Get all emission inputs (filtered by user's company)
 const getAllEmissionInputs = async (req, res) => {
   try {
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view emission inputs'
+      });
+    }
+    
     const emissionInputs = await prisma.emissioninput.findMany({
+      where: { company_id: user.company_id },
       include: {
         company: true,
         details: {
@@ -24,7 +34,11 @@ const getAllEmissionInputs = async (req, res) => {
           }
         },
         result: true
-      }
+      },
+      orderBy: [
+        { year: 'desc' },
+        { month: 'desc' }
+      ]
     });
     
     res.json({
@@ -81,60 +95,55 @@ const getEmissionInputById = async (req, res) => {
   }
 };
 
-// POST - Create new emission input
+// POST - Create new emission input (auto-use company_id from token)
 const createEmissionInput = async (req, res) => {
   try {
-    const { company_id, month, year } = req.body;
+    const { emission_source_id, input_date, consumption_value, unit, notes } = req.body;
+    const user = req.user;
 
     // Validation
-    if (!company_id || !month || !year) {
+    if (!emission_source_id || !input_date || !consumption_value || !unit) {
       return res.status(400).json({
         success: false,
-        message: 'Company ID, month, and year are required'
+        message: 'emission_source_id, input_date, consumption_value, and unit are required'
       });
     }
 
-    // Check if company exists
-    const company = await prisma.company.findUnique({
-      where: { company_id: parseInt(company_id) }
-    });
-
-    if (!company) {
-      return res.status(404).json({
+    if (!user.company_id) {
+      return res.status(400).json({
         success: false,
-        message: 'Company not found'
+        message: 'User must belong to a company to create emission inputs'
       });
     }
 
-    // Check if input already exists for this company, month, and year
-    const existingInput = await prisma.emissioninput.findFirst({
-      where: {
-        company_id: parseInt(company_id),
-        month: parseInt(month),
-        year: parseInt(year)
+    // Check if emission source exists and belongs to user's company
+    const emissionSource = await prisma.emissionsource.findFirst({
+      where: { 
+        source_id: parseInt(emission_source_id),
+        company_id: user.company_id
       }
     });
 
-    if (existingInput) {
-      return res.status(409).json({
+    if (!emissionSource) {
+      return res.status(404).json({
         success: false,
-        message: 'Emission input already exists for this company, month, and year'
+        message: 'Emission source not found or does not belong to your company'
       });
     }
 
     const emissionInput = await prisma.emissioninput.create({
       data: {
-        company_id: parseInt(company_id),
-        month: parseInt(month),
-        year: parseInt(year)
+        emission_source_id: parseInt(emission_source_id),
+        company_id: user.company_id,
+        input_date: new Date(input_date),
+        consumption_value: parseFloat(consumption_value),
+        unit: unit,
+        notes: notes || null
       },
       include: {
         company: true,
-        details: {
-          include: {
-            source: true
-          }
-        },
+        source: true,
+        details: true,
         result: true
       }
     });
@@ -180,27 +189,28 @@ const createEmissionInputWithDetails = async (req, res) => {
       });
     }
 
-    const { company_id, emission_data } = req.body;
+    const { emission_data } = req.body;
+    const user = req.user;
 
     // Validation
-    if (!company_id || !emission_data || !Array.isArray(emission_data)) {
+    if (!emission_data || !Array.isArray(emission_data)) {
       return res.status(400).json({
         success: false,
-        message: 'Company ID and emission_data array are required'
+        message: 'emission_data array is required'
       });
     }
 
-    // Check if company exists
-    const company = await prisma.company.findUnique({
-      where: { company_id: parseInt(company_id) }
-    });
-
-    if (!company) {
-      return res.status(404).json({
+    if (!user?.company_id) {
+      return res.status(400).json({
         success: false,
-        message: 'Company not found'
+        message: 'User must belong to a company to create emission input'
       });
     }
+
+    // Get company from token
+    const company = await prisma.company.findUnique({
+      where: { company_id: user.company_id }
+    });
 
     // Get current month and year
     const { month, year } = getCurrentMonthYear();
@@ -210,7 +220,7 @@ const createEmissionInputWithDetails = async (req, res) => {
     try {
       existingInput = await prisma.emissioninput.findFirst({
         where: {
-          company_id: parseInt(company_id),
+          company_id: user.company_id,
           month: month,
           year: year
         }
@@ -244,6 +254,7 @@ const createEmissionInputWithDetails = async (req, res) => {
     // Get all emission sources to validate source names
     let emissionSources;
     try {
+      // emissionsource is global (does not have company_id in schema)
       emissionSources = await prisma.emissionsource.findMany();
     } catch (error) {
       console.error('Error fetching emission sources:', error);
@@ -284,7 +295,7 @@ const createEmissionInputWithDetails = async (req, res) => {
         // Create emission input
         const emissionInput = await tx.emissioninput.create({
           data: {
-            company_id: parseInt(company_id),
+            company_id: user.company_id,
             month: month,
             year: year
           }

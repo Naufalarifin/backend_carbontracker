@@ -2,21 +2,41 @@ const { PrismaClient } = require("../../generated/prisma");
 
 const prisma = new PrismaClient();
 
-// GET - Get all companies
+// GET - Get all companies (filtered by user's company)
 const getAllCompanies = async (req, res) => {
   try {
-    const companies = await prisma.company.findMany({
-      include: {
-        users: true,
-        inputs: true,
-        certificates: true
-      }
-    });
+    const user = req.user;
     
+    // If user has a company, only show their company
+    if (user.company_id) {
+      const company = await prisma.company.findUnique({
+        where: { company_id: user.company_id },
+        include: {
+          users: true,
+          inputs: true,
+          certificates: true
+        }
+      });
+      
+      if (!company) {
+        return res.status(404).json({
+          success: false,
+          message: 'Company not found'
+        });
+      }
+      
+      return res.json({
+        success: true,
+        data: [company],
+        message: 'Company retrieved successfully'
+      });
+    }
+    
+    // If user doesn't have a company, return empty array
     res.json({
       success: true,
-      data: companies,
-      message: 'Companies retrieved successfully'
+      data: [],
+      message: 'No company found for this user'
     });
   } catch (error) {
     console.error('Error getting companies:', error);
@@ -28,10 +48,20 @@ const getAllCompanies = async (req, res) => {
   }
 };
 
-// GET - Get company by ID
+// GET - Get company by ID (only if user belongs to that company)
 const getCompanyById = async (req, res) => {
   try {
     const { id } = req.params;
+    const user = req.user;
+    
+    // Check if user belongs to the requested company
+    if (user.company_id !== parseInt(id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own company.'
+      });
+    }
+    
     const company = await prisma.company.findUnique({
       where: { company_id: parseInt(id) },
       include: {
@@ -116,7 +146,7 @@ const createCompany = async (req, res) => {
   }
 };
 
-// POST - Create company for existing user
+// POST - Create company for current user (auto-use user_id from token)
 const createCompanyForUser = async (req, res) => {
   try {
     const { 
@@ -126,27 +156,16 @@ const createCompanyForUser = async (req, res) => {
       jumlah_karyawan, 
       unit_produk_perbulan, 
       pendapatan_perbulan, 
-      ton_barang_perbulan, 
-      user_id 
+      ton_barang_perbulan
     } = req.body;
+    
+    const user = req.user; // Get user from token
 
     // Validation
-    if (!name || !user_id) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        message: 'Company name and user_id are required'
-      });
-    }
-
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { user_id: parseInt(user_id) }
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
+        message: 'Company name is required'
       });
     }
 
@@ -154,7 +173,7 @@ const createCompanyForUser = async (req, res) => {
     if (user.company_id) {
       return res.status(409).json({
         success: false,
-        message: 'User already belongs to a company'
+        message: 'User already belongs to a company. Use PUT /api/companies/:id to update existing company.'
       });
     }
 
@@ -175,7 +194,7 @@ const createCompanyForUser = async (req, res) => {
 
       // Update user to link with the new company
       const updatedUser = await tx.user.update({
-        where: { user_id: parseInt(user_id) },
+        where: { user_id: user.user_id },
         data: { company_id: company.company_id },
         include: {
           company: true
@@ -203,7 +222,7 @@ const createCompanyForUser = async (req, res) => {
   }
 };
 
-// PUT - Update company by ID
+// PUT - Update company by ID (only if user belongs to that company)
 const updateCompany = async (req, res) => {
   try {
     const { id } = req.params;
@@ -216,6 +235,16 @@ const updateCompany = async (req, res) => {
       pendapatan_perbulan, 
       ton_barang_perbulan 
     } = req.body;
+    
+    const user = req.user; // Get user from token
+
+    // Check if user belongs to the requested company
+    if (user.company_id !== parseInt(id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update your own company.'
+      });
+    }
 
     // Validation
     if (!name) {

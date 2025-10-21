@@ -1,47 +1,94 @@
 const { PrismaClient } = require("../../generated/prisma");
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
 
-// Middleware untuk memverifikasi user login
+// JWT Secret Key (harus sama dengan yang di userController)
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+// Middleware untuk memverifikasi JWT token
 const authenticateUser = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-
-    // Jika tidak ada email/password di body, coba dari headers
-    const authEmail = email || req.headers['x-user-email'];
-    const authPassword = password || req.headers['x-user-password'];
-
-    if (!authEmail || !authPassword) {
+    // Ambil token dari header Authorization
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication credentials required'
+        message: '❌ Gagal mengakses endpoint!',
+        details: 'Token autentikasi tidak ditemukan. Gunakan format: Authorization: Bearer <token>',
+        error: 'Authentication token required',
+        solution: 'Login terlebih dahulu menggunakan POST /api/users/login dan gunakan token yang dikembalikan'
       });
     }
 
-    // Cari user berdasarkan email
+    // Extract token dari header
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: '❌ Token tidak valid!',
+        details: 'Token autentikasi kosong atau tidak valid.',
+        error: 'Invalid token format',
+        solution: 'Pastikan token dikirim dengan format yang benar'
+      });
+    }
+
+    // Verify JWT token
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Cari user berdasarkan ID dari token
     const user = await prisma.user.findUnique({
-      where: { email: authEmail },
+      where: { user_id: decoded.userId },
       include: {
         company: true
       }
     });
 
-    if (!user || user.password !== authPassword) {
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: '❌ User tidak ditemukan!',
+        details: 'User yang terkait dengan token ini tidak ditemukan.',
+        error: 'User not found',
+        solution: 'Login ulang untuk mendapatkan token yang valid'
       });
     }
 
     // Tambahkan user info ke request object
     req.user = user;
+    req.token = decoded;
     next();
   } catch (error) {
     console.error('Authentication error:', error);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: '❌ Token tidak valid!',
+        details: 'Token autentikasi yang Anda gunakan tidak valid atau sudah rusak.',
+        error: 'Invalid token',
+        solution: 'Login ulang untuk mendapatkan token yang baru'
+      });
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: '❌ Token sudah expired!',
+        details: 'Token autentikasi Anda sudah kadaluarsa.',
+        error: 'Token expired',
+        solution: 'Login ulang untuk mendapatkan token yang baru'
+      });
+    }
+
     res.status(500).json({
       success: false,
-      message: 'Authentication failed',
-      error: error.message
+      message: '❌ Terjadi kesalahan saat autentikasi!',
+      details: 'Sistem tidak dapat memverifikasi identitas Anda saat ini.',
+      error: error.message,
+      solution: 'Silakan coba lagi atau hubungi administrator'
     });
   }
 };
