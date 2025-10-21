@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
+  url      = "mysql://root:@localhost:3306/carbontracker"
 }
 
 model certificate {
@@ -13,7 +13,6 @@ model certificate {
   company_id     Int
   issue_date     DateTime
   expiry_date    DateTime?
-  level          String?
   company        company   @relation(fields: [company_id], references: [company_id], map: "Certificate_company_id_fkey")
 
   @@index([company_id], map: "Certificate_company_id_fkey")
@@ -63,7 +62,8 @@ model emissionresult {
   result_id      Int           @id @default(autoincrement())
   input_id       Int           @unique(map: "EmissionResult_input_id_key")
   total_emission Float
-  rekomendasi    String?       @db.Text
+  analisis       String?       @db.Text
+  level          String?
   emissioninput  emissioninput @relation(fields: [input_id], references: [input_id], map: "EmissionResult_input_id_fkey")
 }
 

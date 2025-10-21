@@ -122,7 +122,6 @@ const createCompanyForUser = async (req, res) => {
     const { 
       name, 
       address, 
-      industry, 
       jenis_perusahaan, 
       jumlah_karyawan, 
       unit_produk_perbulan, 
@@ -166,7 +165,6 @@ const createCompanyForUser = async (req, res) => {
         data: {
           name,
           address: address || null,
-          industry: industry || null,
           jenis_perusahaan: jenis_perusahaan || null,
           jumlah_karyawan: jumlah_karyawan ? parseInt(jumlah_karyawan) : null,
           unit_produk_perbulan: unit_produk_perbulan ? parseInt(unit_produk_perbulan) : null,

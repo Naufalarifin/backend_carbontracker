@@ -62,10 +62,148 @@ const getCertificateById = async (req, res) => {
   }
 };
 
+// Helper function to validate 12 consecutive months of "Baik" level results
+const validateTwelveConsecutiveMonths = async (company_id) => {
+  try {
+    // Get all emission inputs for the company, ordered by year and month
+    const emissionInputs = await prisma.emissioninput.findMany({
+      where: { company_id: parseInt(company_id) },
+      include: {
+        emissionresult: true
+      },
+      orderBy: [
+        { year: 'asc' },
+        { month: 'asc' }
+      ]
+    });
+
+    if (emissionInputs.length < 12) {
+      return {
+        valid: false,
+        message: `❌ Sertifikat tidak dapat dibuat!`,
+        details: `Perusahaan membutuhkan minimal 12 bulan data emisi berturut-turut. Saat ini hanya memiliki ${emissionInputs.length} bulan data.`,
+        requirements: {
+          needed: 12,
+          current: emissionInputs.length,
+          missing: 12 - emissionInputs.length
+        }
+      };
+    }
+
+    // Group inputs by year-month for easier processing
+    const inputsByPeriod = {};
+    emissionInputs.forEach(input => {
+      const key = `${input.year}-${input.month.toString().padStart(2, '0')}`;
+      inputsByPeriod[key] = input;
+    });
+
+    // Find all possible 12-month consecutive sequences
+    const periods = Object.keys(inputsByPeriod).sort();
+    
+    for (let i = 0; i <= periods.length - 12; i++) {
+      const sequence = periods.slice(i, i + 12);
+      let isValidSequence = true;
+      let missingMonths = [];
+      let nonBaikResults = [];
+
+      // Check if this 12-month sequence is consecutive
+      for (let j = 0; j < 12; j++) {
+        const currentPeriod = sequence[j];
+        const [year, month] = currentPeriod.split('-').map(Number);
+        
+        // Calculate expected next month/year
+        let expectedMonth = month + 1;
+        let expectedYear = year;
+        if (expectedMonth > 12) {
+          expectedMonth = 1;
+          expectedYear = year + 1;
+        }
+
+        // Check if next period exists (except for the last one)
+        if (j < 11) {
+          const nextPeriod = `${expectedYear}-${expectedMonth.toString().padStart(2, '0')}`;
+          if (!inputsByPeriod[nextPeriod]) {
+            isValidSequence = false;
+            missingMonths.push(`${expectedMonth}/${expectedYear}`);
+            break;
+          }
+        }
+
+        // Check if result exists and level is "Baik"
+        const input = inputsByPeriod[currentPeriod];
+        if (!input.emissionresult) {
+          isValidSequence = false;
+          missingMonths.push(`${month}/${year} (no result)`);
+          break;
+        }
+
+        if (input.emissionresult.level !== 'Baik') {
+          isValidSequence = false;
+          nonBaikResults.push({
+            period: `${month}/${year}`,
+            level: input.emissionresult.level
+          });
+          break;
+        }
+      }
+
+      if (isValidSequence) {
+        return {
+          valid: true,
+          message: '✅ Perusahaan memenuhi syarat untuk sertifikat!',
+          details: 'Perusahaan memiliki 12 bulan berturut-turut dengan semua hasil level "Baik".',
+          sequence: sequence.map(period => {
+            const [year, month] = period.split('-').map(Number);
+            return `${month}/${year}`;
+          }),
+          requirements: {
+            status: 'LENGKAP',
+            months: 12,
+            level: 'Semua "Baik"',
+            consecutive: true
+          }
+        };
+      }
+    }
+
+    return {
+      valid: false,
+      message: '❌ Sertifikat tidak dapat dibuat!',
+      details: 'Tidak ditemukan 12 bulan berturut-turut dengan semua hasil level "Baik".',
+      requirements: {
+        needed: '12 bulan berturut-turut dengan level "Baik"',
+        current: `${emissionInputs.length} bulan data tersedia`,
+        periods: periods.map(period => {
+          const [year, month] = period.split('-').map(Number);
+          return `${month}/${year}`;
+        })
+      },
+      suggestions: [
+        'Pastikan ada data emisi untuk 12 bulan berturut-turut',
+        'Semua hasil analisis harus memiliki level "Baik"',
+        'Tidak boleh ada bulan yang kosong dalam 12 bulan berturut-turut'
+      ]
+    };
+  } catch (error) {
+    console.error('Error validating 12 consecutive months:', error);
+    return {
+      valid: false,
+      message: '❌ Terjadi kesalahan saat memvalidasi data emisi',
+      details: 'Sistem tidak dapat memproses data emisi perusahaan saat ini.',
+      error: error.message,
+      suggestions: [
+        'Pastikan database terhubung dengan baik',
+        'Periksa format data emisi perusahaan',
+        'Hubungi administrator sistem jika masalah berlanjut'
+      ]
+    };
+  }
+};
+
 // POST - Create new certificate
 const createCertificate = async (req, res) => {
   try {
-    const { company_id, issue_date, expiry_date, level } = req.body;
+    const { company_id, issue_date, expiry_date } = req.body;
 
     // Validation
     if (!company_id || !issue_date) {
@@ -84,6 +222,19 @@ const createCertificate = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Company not found'
+      });
+    }
+
+    // Validate 12 consecutive months of "Baik" level results
+    const validation = await validateTwelveConsecutiveMonths(company_id);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.message,
+        details: validation.details,
+        requirements: validation.requirements,
+        suggestions: validation.suggestions || null,
+        validation_details: validation
       });
     }
 
@@ -116,8 +267,7 @@ const createCertificate = async (req, res) => {
       data: {
         company_id: parseInt(company_id),
         issue_date: issueDate,
-        expiry_date: expiryDate,
-        level: level || null
+        expiry_date: expiryDate
       },
       include: {
         company: true
@@ -127,7 +277,14 @@ const createCertificate = async (req, res) => {
     res.status(201).json({
       success: true,
       data: certificate,
-      message: 'Certificate created successfully'
+      message: '🎉 Sertifikat berhasil dibuat!',
+      details: 'Sertifikat telah diterbitkan untuk perusahaan yang memenuhi syarat.',
+      validation: {
+        message: validation.message,
+        details: validation.details,
+        sequence: validation.sequence,
+        requirements: validation.requirements
+      }
     });
   } catch (error) {
     console.error('Error creating certificate:', error);
@@ -316,6 +473,46 @@ const getActiveCertificates = async (req, res) => {
   }
 };
 
+// GET - Check certificate eligibility for company
+const checkCertificateEligibility = async (req, res) => {
+  try {
+    const { companyId } = req.params;
+
+    // Check if company exists
+    const company = await prisma.company.findUnique({
+      where: { company_id: parseInt(companyId) }
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    // Validate 12 consecutive months of "Baik" level results
+    const validation = await validateTwelveConsecutiveMonths(companyId);
+
+    res.json({
+      success: true,
+      data: {
+        company_id: parseInt(companyId),
+        company_name: company.name,
+        eligible: validation.valid,
+        validation: validation
+      },
+      message: validation.valid ? 'Company is eligible for certificate' : 'Company is not eligible for certificate'
+    });
+  } catch (error) {
+    console.error('Error checking certificate eligibility:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check certificate eligibility',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getAllCertificates,
   getCertificateById,
@@ -323,5 +520,6 @@ module.exports = {
   updateCertificate,
   deleteCertificate,
   getCertificatesByCompany,
-  getActiveCertificates
+  getActiveCertificates,
+  checkCertificateEligibility
 };

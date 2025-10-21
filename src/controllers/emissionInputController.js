@@ -3,10 +3,19 @@ const { getCurrentMonthYear } = require('../utils/dateFormatter');
 
 const prisma = new PrismaClient();
 
+// Test database connection
+prisma.$connect()
+  .then(() => {
+    console.log('✅ Database connected successfully');
+  })
+  .catch((error) => {
+    console.error('❌ Database connection failed:', error.message);
+  });
+
 // GET - Get all emission inputs
 const getAllEmissionInputs = async (req, res) => {
   try {
-    const emissionInputs = await prisma.emissionInput.findMany({
+    const emissionInputs = await prisma.emissioninput.findMany({
       include: {
         company: true,
         details: {
@@ -37,7 +46,7 @@ const getAllEmissionInputs = async (req, res) => {
 const getEmissionInputById = async (req, res) => {
   try {
     const { id } = req.params;
-    const emissionInput = await prisma.emissionInput.findUnique({
+    const emissionInput = await prisma.emissioninput.findUnique({
       where: { input_id: parseInt(id) },
       include: {
         company: true,
@@ -98,7 +107,7 @@ const createEmissionInput = async (req, res) => {
     }
 
     // Check if input already exists for this company, month, and year
-    const existingInput = await prisma.emissionInput.findFirst({
+    const existingInput = await prisma.emissioninput.findFirst({
       where: {
         company_id: parseInt(company_id),
         month: parseInt(month),
@@ -113,7 +122,7 @@ const createEmissionInput = async (req, res) => {
       });
     }
 
-    const emissionInput = await prisma.emissionInput.create({
+    const emissionInput = await prisma.emissioninput.create({
       data: {
         company_id: parseInt(company_id),
         month: parseInt(month),
@@ -148,6 +157,29 @@ const createEmissionInput = async (req, res) => {
 // POST - Create emission input with details (integrated input)
 const createEmissionInputWithDetails = async (req, res) => {
   try {
+    // Debug: Check if Prisma client is properly initialized
+    console.log('Debug - Prisma client:', !!prisma);
+    console.log('Debug - Prisma emissioninput:', !!prisma?.emissioninput);
+    console.log('Debug - Prisma emissionsource:', !!prisma?.emissionsource);
+    
+    if (!prisma) {
+      console.error('Prisma client is null/undefined');
+      return res.status(500).json({
+        success: false,
+        message: 'Database client not properly initialized',
+        error: 'Prisma client is null/undefined'
+      });
+    }
+    
+    if (!prisma.emissioninput) {
+      console.error('Prisma emissioninput model not available');
+      return res.status(500).json({
+        success: false,
+        message: 'Database model not available',
+        error: 'Emissioninput model not found in Prisma client'
+      });
+    }
+
     const { company_id, emission_data } = req.body;
 
     // Validation
@@ -174,13 +206,23 @@ const createEmissionInputWithDetails = async (req, res) => {
     const { month, year } = getCurrentMonthYear();
 
     // Check if input already exists for this company, month, and year
-    const existingInput = await prisma.emissionInput.findFirst({
-      where: {
-        company_id: parseInt(company_id),
-        month: month,
-        year: year
-      }
-    });
+    let existingInput;
+    try {
+      existingInput = await prisma.emissioninput.findFirst({
+        where: {
+          company_id: parseInt(company_id),
+          month: month,
+          year: year
+        }
+      });
+    } catch (error) {
+      console.error('Error checking existing input:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error when checking existing input',
+        error: error.message
+      });
+    }
 
     if (existingInput) {
       return res.status(409).json({
@@ -200,7 +242,18 @@ const createEmissionInputWithDetails = async (req, res) => {
     }
 
     // Get all emission sources to validate source names
-    const emissionSources = await prisma.emissionSource.findMany();
+    let emissionSources;
+    try {
+      emissionSources = await prisma.emissionsource.findMany();
+    } catch (error) {
+      console.error('Error fetching emission sources:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error when fetching emission sources',
+        error: error.message
+      });
+    }
+    
     const sourceMap = {};
     emissionSources.forEach(source => {
       sourceMap[source.name.toLowerCase()] = source;
@@ -225,42 +278,49 @@ const createEmissionInputWithDetails = async (req, res) => {
     }
 
     // Create emission input with details in transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Create emission input
-      const emissionInput = await tx.emissionInput.create({
-        data: {
-          company_id: parseInt(company_id),
-          month: month,
-          year: year
-        }
-      });
-
-      // Create emission input details
-      const details = [];
-      for (const detailData of detailsToCreate) {
-        const detail = await tx.emissionInputDetail.create({
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        // Create emission input
+        const emissionInput = await tx.emissioninput.create({
           data: {
-            input_id: emissionInput.input_id,
-            source_id: detailData.source_id,
-            value: detailData.value,
-            emission_value: detailData.emission_value
-          },
-          include: {
-            source: true
+            company_id: parseInt(company_id),
+            month: month,
+            year: year
           }
         });
-        details.push(detail);
-      }
 
-      return {
-        emissionInput: {
-          ...emissionInput,
-          company: company,
-          details: details,
-          result: null
+        // Create emission input details
+        const details = [];
+        for (const detailData of detailsToCreate) {
+          const detail = await tx.emissioninputdetail.create({
+            data: {
+              input_id: emissionInput.input_id,
+              source_id: detailData.source_id,
+              value: detailData.value,
+              emission_value: detailData.emission_value
+            },
+          });
+          details.push(detail);
         }
-      };
-    });
+
+        return {
+          emissionInput: {
+            ...emissionInput,
+            company: company,
+            details: details,
+            result: null
+          }
+        };
+      });
+    } catch (error) {
+      console.error('Error creating emission input with details:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error when creating emission input with details',
+        error: error.message
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -283,7 +343,7 @@ const deleteEmissionInput = async (req, res) => {
     const { id } = req.params;
 
     // Check if emission input exists
-    const existingInput = await prisma.emissionInput.findUnique({
+    const existingInput = await prisma.emissioninput.findUnique({
       where: { input_id: parseInt(id) }
     });
 
@@ -295,7 +355,7 @@ const deleteEmissionInput = async (req, res) => {
     }
 
     // Delete emission input (cascade will handle related records)
-    await prisma.emissionInput.delete({
+    await prisma.emissioninput.delete({
       where: { input_id: parseInt(id) }
     });
 
@@ -318,7 +378,7 @@ const getEmissionInputsByCompany = async (req, res) => {
   try {
     const { companyId } = req.params;
     
-    const emissionInputs = await prisma.emissionInput.findMany({
+    const emissionInputs = await prisma.emissioninput.findMany({
       where: { company_id: parseInt(companyId) },
       include: {
         company: true,

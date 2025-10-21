@@ -7,7 +7,8 @@ const {
   updateCertificate,
   deleteCertificate,
   getCertificatesByCompany,
-  getActiveCertificates
+  getActiveCertificates,
+  checkCertificateEligibility
 } = require('../controllers/certificateController');
 
 // GET /api/certificates - Get all certificates
@@ -18,6 +19,9 @@ router.get('/active', getActiveCertificates);
 
 // GET /api/certificates/company/:companyId - Get certificates by company
 router.get('/company/:companyId', getCertificatesByCompany);
+
+// GET /api/certificates/eligibility/:companyId - Check certificate eligibility
+router.get('/eligibility/:companyId', checkCertificateEligibility);
 
 // GET /api/certificates/:id - Get certificate by ID
 router.get('/:id', getCertificateById);

@@ -6,14 +6,14 @@ const prisma = new PrismaClient();
 // GET - Get all emission results
 const getAllEmissionResults = async (req, res) => {
   try {
-    const emissionResults = await prisma.emissionResult.findMany({
+    const emissionResults = await prisma.emissionresult.findMany({
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -40,15 +40,15 @@ const getAllEmissionResults = async (req, res) => {
 const getEmissionResultById = async (req, res) => {
   try {
     const { id } = req.params;
-    const emissionResult = await prisma.emissionResult.findUnique({
+    const emissionResult = await prisma.emissionresult.findUnique({
       where: { result_id: parseInt(id) },
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -81,18 +81,18 @@ const getEmissionResultById = async (req, res) => {
 // POST - Create new emission result
 const createEmissionResult = async (req, res) => {
   try {
-    const { input_id, total_emission, rekomendasi } = req.body;
+    const { input_id } = req.body;
 
     // Validation
-    if (!input_id || !total_emission) {
+    if (!input_id) {
       return res.status(400).json({
         success: false,
-        message: 'Input ID and total emission are required'
+        message: 'Input ID is required'
       });
     }
 
     // Check if emission input exists
-    const emissionInput = await prisma.emissionInput.findUnique({
+    const emissionInput = await prisma.emissioninput.findUnique({
       where: { input_id: parseInt(input_id) }
     });
 
@@ -104,7 +104,7 @@ const createEmissionResult = async (req, res) => {
     }
 
     // Check if result already exists for this input
-    const existingResult = await prisma.emissionResult.findUnique({
+    const existingResult = await prisma.emissionresult.findUnique({
       where: { input_id: parseInt(input_id) }
     });
 
@@ -115,19 +115,27 @@ const createEmissionResult = async (req, res) => {
       });
     }
 
-    const emissionResult = await prisma.emissionResult.create({
+    // Compute total_emission from emissioninputdetail sum
+    const details = await prisma.emissioninputdetail.findMany({
+      where: { input_id: parseInt(input_id) },
+      select: { emission_value: true }
+    });
+
+    const total_emission = details.reduce((sum, d) => sum + (d.emission_value || 0), 0);
+
+    const emissionResult = await prisma.emissionresult.create({
       data: {
         input_id: parseInt(input_id),
-        total_emission: parseFloat(total_emission),
-        rekomendasi: rekomendasi || 'calculated'
+        total_emission: total_emission,
+        analisis: null
       },
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -150,22 +158,22 @@ const createEmissionResult = async (req, res) => {
   }
 };
 
-// PUT - Update emission result rekomendasi
-const updateEmissionResultRekomendasi = async (req, res) => {
+// PUT - Update emission result analisis
+const updateEmissionResultAnalisis = async (req, res) => {
   try {
     const { id } = req.params;
-    const { rekomendasi } = req.body;
+    const { analisis } = req.body;
 
     // Validation
-    if (!rekomendasi) {
+    if (!analisis) {
       return res.status(400).json({
         success: false,
-        message: 'Rekomendasi is required'
+        message: 'Analisis is required'
       });
     }
 
     // Check if emission result exists
-    const existingResult = await prisma.emissionResult.findUnique({
+    const existingResult = await prisma.emissionresult.findUnique({
       where: { result_id: parseInt(id) }
     });
 
@@ -176,35 +184,16 @@ const updateEmissionResultRekomendasi = async (req, res) => {
       });
     }
 
-    // Valid rekomendasi values
-    const validRekomendasi = [
-      'calculated',
-      'pending',
-      'under_review',
-      'approved',
-      'rejected',
-      'certified',
-      'draft',
-      'final'
-    ];
-
-    if (!validRekomendasi.includes(rekomendasi)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid rekomendasi. Valid rekomendasi: ${validRekomendasi.join(', ')}`
-      });
-    }
-
-    const emissionResult = await prisma.emissionResult.update({
+    const emissionResult = await prisma.emissionresult.update({
       where: { result_id: parseInt(id) },
-      data: { rekomendasi: rekomendasi },
+      data: { analisis: analisis },
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -215,13 +204,13 @@ const updateEmissionResultRekomendasi = async (req, res) => {
     res.json({
       success: true,
       data: emissionResult,
-      message: 'Emission result rekomendasi updated successfully'
+      message: 'Emission result analisis updated successfully'
     });
   } catch (error) {
-    console.error('Error updating emission result rekomendasi:', error);
+    console.error('Error updating emission result analisis:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update emission result rekomendasi',
+      message: 'Failed to update emission result analisis',
       error: error.message
     });
   }
@@ -231,10 +220,10 @@ const updateEmissionResultRekomendasi = async (req, res) => {
 const updateEmissionResult = async (req, res) => {
   try {
     const { id } = req.params;
-    const { total_emission, rekomendasi } = req.body;
+    const { total_emission, analisis } = req.body;
 
     // Check if emission result exists
-    const existingResult = await prisma.emissionResult.findUnique({
+    const existingResult = await prisma.emissionresult.findUnique({
       where: { result_id: parseInt(id) }
     });
 
@@ -247,18 +236,18 @@ const updateEmissionResult = async (req, res) => {
 
     const updateData = {};
     if (total_emission !== undefined) updateData.total_emission = parseFloat(total_emission);
-    if (rekomendasi !== undefined) updateData.rekomendasi = rekomendasi;
+    if (analisis !== undefined) updateData.analisis = analisis;
 
-    const emissionResult = await prisma.emissionResult.update({
+    const emissionResult = await prisma.emissionresult.update({
       where: { result_id: parseInt(id) },
       data: updateData,
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -287,7 +276,7 @@ const deleteEmissionResult = async (req, res) => {
     const { id } = req.params;
 
     // Check if emission result exists
-    const existingResult = await prisma.emissionResult.findUnique({
+    const existingResult = await prisma.emissionresult.findUnique({
       where: { result_id: parseInt(id) }
     });
 
@@ -299,7 +288,7 @@ const deleteEmissionResult = async (req, res) => {
     }
 
     // Delete emission result
-    await prisma.emissionResult.delete({
+    await prisma.emissionresult.delete({
       where: { result_id: parseInt(id) }
     });
 
@@ -317,22 +306,22 @@ const deleteEmissionResult = async (req, res) => {
   }
 };
 
-// POST - Generate AI recommendation for emission result
-const generateAIRecommendation = async (req, res) => {
+// POST - Generate AI analysis for emission result
+const generateAIAnalysis = async (req, res) => {
   try {
     const { id } = req.params;
     const { useAI = true } = req.body;
 
     // Get emission result with full data
-    const emissionResult = await prisma.emissionResult.findUnique({
+    const emissionResult = await prisma.emissionresult.findUnique({
       where: { result_id: parseInt(id) },
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -349,38 +338,48 @@ const generateAIRecommendation = async (req, res) => {
 
     // Prepare emission data for AI analysis
     const emissionData = {
-      company: emissionResult.input.company,
-      details: emissionResult.input.details,
+      company: emissionResult.emissioninput.company,
+      details: emissionResult.emissioninput.emissioninputdetail,
       total_emission: emissionResult.total_emission
     };
 
-    let recommendation;
+
+    let analysis;
     
     if (useAI) {
       try {
-        // Generate AI recommendation
-        recommendation = await aiRecommendationService.generateRecommendation(emissionData);
+        // Generate AI analysis
+        analysis = await aiRecommendationService.generateAnalysis(emissionData);
       } catch (aiError) {
-        console.warn('AI service failed, using basic recommendation:', aiError.message);
-        // Fallback to basic recommendation
-        recommendation = aiRecommendationService.generateBasicRecommendation(emissionData);
+        console.warn('AI service failed, using basic analysis:', aiError.message);
+        // Fallback to basic analysis
+        analysis = aiRecommendationService.generateBasicAnalysis(emissionData);
       }
     } else {
-      // Use basic recommendation
-      recommendation = aiRecommendationService.generateBasicRecommendation(emissionData);
+      // Use basic analysis
+      analysis = aiRecommendationService.generateBasicAnalysis(emissionData);
     }
 
-    // Update emission result with recommendation
-    const updatedResult = await prisma.emissionResult.update({
+    // Compute sector-based level from company profile
+    const computedLevel = aiRecommendationService.computeSectorLevel(
+      emissionResult.emissioninput.company,
+      emissionResult.total_emission
+    );
+
+    // Update emission result with analysis and level (if computed)
+    const updatedResult = await prisma.emissionresult.update({
       where: { result_id: parseInt(id) },
-      data: { rekomendasi: recommendation },
+      data: { 
+        analisis: analysis,
+        level: computedLevel || undefined
+      },
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -389,7 +388,7 @@ const generateAIRecommendation = async (req, res) => {
     });
 
     // Get priority actions
-    const priorityActions = aiRecommendationService.getPriorityActions(emissionResult.input.details);
+    const priorityActions = aiRecommendationService.getPriorityActions(emissionResult.emissioninput.emissioninputdetail);
     const emissionLevel = aiRecommendationService.categorizeEmissionLevel(emissionResult.total_emission);
 
     res.json({
@@ -398,18 +397,19 @@ const generateAIRecommendation = async (req, res) => {
         ...updatedResult,
         ai_analysis: {
           emission_level: emissionLevel,
+          sector_level: computedLevel || null,
           priority_actions: priorityActions,
           generated_at: new Date().toISOString(),
           ai_used: useAI
         }
       },
-      message: 'AI recommendation generated successfully'
+      message: 'AI analysis generated successfully'
     });
   } catch (error) {
-    console.error('Error generating AI recommendation:', error);
+    console.error('Error generating AI analysis:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate AI recommendation',
+      message: 'Failed to generate AI analysis',
       error: error.message
     });
   }
@@ -420,15 +420,15 @@ const getEmissionResultWithAnalysis = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const emissionResult = await prisma.emissionResult.findUnique({
+    const emissionResult = await prisma.emissionresult.findUnique({
       where: { result_id: parseInt(id) },
       include: {
-        input: {
+        emissioninput: {
           include: {
             company: true,
-            details: {
+            emissioninputdetail: {
               include: {
-                source: true
+                emissionsource: true
               }
             }
           }
@@ -445,12 +445,12 @@ const getEmissionResultWithAnalysis = async (req, res) => {
 
     // Generate analysis data
     const emissionData = {
-      company: emissionResult.input.company,
-      details: emissionResult.input.details,
+      company: emissionResult.emissioninput.company,
+      details: emissionResult.emissioninput.emissioninputdetail,
       total_emission: emissionResult.total_emission
     };
 
-    const priorityActions = aiRecommendationService.getPriorityActions(emissionResult.input.details);
+    const priorityActions = aiRecommendationService.getPriorityActions(emissionResult.emissioninput.emissioninputdetail);
     const emissionLevel = aiRecommendationService.categorizeEmissionLevel(emissionResult.total_emission);
 
     res.json({
@@ -479,9 +479,9 @@ module.exports = {
   getAllEmissionResults,
   getEmissionResultById,
   createEmissionResult,
-  updateEmissionResultRekomendasi,
+  updateEmissionResultAnalisis,
   updateEmissionResult,
   deleteEmissionResult,
-  generateAIRecommendation,
+  generateAIAnalysis,
   getEmissionResultWithAnalysis
 };

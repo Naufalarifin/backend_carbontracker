@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 // GET - Get all emission sources
 const getAllEmissionSources = async (req, res) => {
   try {
-    const emissionSources = await prisma.emissionSource.findMany({
+    const emissionSources = await prisma.emissionsource.findMany({
       include: {
         details: true
       }
@@ -30,7 +30,7 @@ const getAllEmissionSources = async (req, res) => {
 const getEmissionSourceById = async (req, res) => {
   try {
     const { id } = req.params;
-    const emissionSource = await prisma.emissionSource.findUnique({
+    const emissionSource = await prisma.emissionsource.findUnique({
       where: { source_id: parseInt(id) },
       include: {
         details: true
@@ -72,7 +72,7 @@ const createEmissionSource = async (req, res) => {
       });
     }
 
-    const emissionSource = await prisma.emissionSource.create({
+    const emissionSource = await prisma.emissionsource.create({
       data: {
         name,
         unit,
@@ -106,7 +106,7 @@ const updateEmissionSource = async (req, res) => {
     const { name, unit, emission_factor, kategori } = req.body;
 
     // Check if emission source exists
-    const existingSource = await prisma.emissionSource.findUnique({
+    const existingSource = await prisma.emissionsource.findUnique({
       where: { source_id: parseInt(id) }
     });
 
@@ -125,7 +125,7 @@ const updateEmissionSource = async (req, res) => {
       });
     }
 
-    const emissionSource = await prisma.emissionSource.update({
+    const emissionSource = await prisma.emissionsource.update({
       where: { source_id: parseInt(id) },
       data: {
         name,
@@ -159,7 +159,7 @@ const deleteEmissionSource = async (req, res) => {
     const { id } = req.params;
 
     // Check if emission source exists
-    const existingSource = await prisma.emissionSource.findUnique({
+    const existingSource = await prisma.emissionsource.findUnique({
       where: { source_id: parseInt(id) }
     });
 
@@ -171,7 +171,7 @@ const deleteEmissionSource = async (req, res) => {
     }
 
     // Delete emission source
-    await prisma.emissionSource.delete({
+    await prisma.emissionsource.delete({
       where: { source_id: parseInt(id) }
     });
 

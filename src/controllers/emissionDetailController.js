@@ -7,7 +7,7 @@ const getEmissionDetailsByInput = async (req, res) => {
   try {
     const { inputId } = req.params;
     
-    const details = await prisma.emissionInputDetail.findMany({
+    const details = await prisma.emissioninputdetail.findMany({
       where: { input_id: parseInt(inputId) },
       include: {
         input: {
@@ -42,7 +42,7 @@ const getEmissionDetailById = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const detail = await prisma.emissionInputDetail.findUnique({
+    const detail = await prisma.emissioninputdetail.findUnique({
       where: { detail_id: parseInt(id) },
       include: {
         input: {
@@ -90,7 +90,7 @@ const createEmissionDetail = async (req, res) => {
     }
 
     // Check if emission input exists
-    const emissionInput = await prisma.emissionInput.findUnique({
+    const emissionInput = await prisma.emissioninput.findUnique({
       where: { input_id: parseInt(input_id) }
     });
 
@@ -102,7 +102,7 @@ const createEmissionDetail = async (req, res) => {
     }
 
     // Check if emission source exists
-    const emissionSource = await prisma.emissionSource.findUnique({
+    const emissionSource = await prisma.emissionsource.findUnique({
       where: { source_id: parseInt(source_id) }
     });
 
@@ -114,7 +114,7 @@ const createEmissionDetail = async (req, res) => {
     }
 
     // Check if detail already exists for this input and source
-    const existingDetail = await prisma.emissionInputDetail.findFirst({
+    const existingDetail = await prisma.emissioninputdetail.findFirst({
       where: {
         input_id: parseInt(input_id),
         source_id: parseInt(source_id)
@@ -131,7 +131,7 @@ const createEmissionDetail = async (req, res) => {
     // Calculate emission value
     const emission_value = parseFloat(value) * emissionSource.emission_factor;
 
-    const detail = await prisma.emissionInputDetail.create({
+    const detail = await prisma.emissioninputdetail.create({
       data: {
         input_id: parseInt(input_id),
         source_id: parseInt(source_id),
@@ -170,7 +170,7 @@ const updateEmissionDetail = async (req, res) => {
     const { source_id, value } = req.body;
 
     // Check if detail exists
-    const existingDetail = await prisma.emissionInputDetail.findUnique({
+    const existingDetail = await prisma.emissioninputdetail.findUnique({
       where: { detail_id: parseInt(id) }
     });
 
@@ -190,7 +190,7 @@ const updateEmissionDetail = async (req, res) => {
     }
 
     // Check if emission source exists
-    const emissionSource = await prisma.emissionSource.findUnique({
+    const emissionSource = await prisma.emissionsource.findUnique({
       where: { source_id: parseInt(source_id) }
     });
 
@@ -204,7 +204,7 @@ const updateEmissionDetail = async (req, res) => {
     // Calculate emission value
     const emission_value = parseFloat(value) * emissionSource.emission_factor;
 
-    const detail = await prisma.emissionInputDetail.update({
+    const detail = await prisma.emissioninputdetail.update({
       where: { detail_id: parseInt(id) },
       data: {
         source_id: parseInt(source_id),
@@ -242,7 +242,7 @@ const deleteEmissionDetail = async (req, res) => {
     const { id } = req.params;
 
     // Check if detail exists
-    const existingDetail = await prisma.emissionInputDetail.findUnique({
+    const existingDetail = await prisma.emissioninputdetail.findUnique({
       where: { detail_id: parseInt(id) }
     });
 
@@ -254,7 +254,7 @@ const deleteEmissionDetail = async (req, res) => {
     }
 
     // Delete detail
-    await prisma.emissionInputDetail.delete({
+    await prisma.emissioninputdetail.delete({
       where: { detail_id: parseInt(id) }
     });
 

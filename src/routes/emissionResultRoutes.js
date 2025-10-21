@@ -4,10 +4,10 @@ const {
   getAllEmissionResults,
   getEmissionResultById,
   createEmissionResult,
-  updateEmissionResultRekomendasi,
+  updateEmissionResultAnalisis,
   updateEmissionResult,
   deleteEmissionResult,
-  generateAIRecommendation,
+  generateAIAnalysis,
   getEmissionResultWithAnalysis
 } = require('../controllers/emissionResultController');
 
@@ -23,11 +23,11 @@ router.get('/:id/analysis', getEmissionResultWithAnalysis);
 // POST /api/emission-results - Create new emission result
 router.post('/', createEmissionResult);
 
-// POST /api/emission-results/:id/ai-recommendation - Generate AI recommendation
-router.post('/:id/ai-recommendation', generateAIRecommendation);
+// POST /api/emission-results/:id/ai-analysis - Generate AI analysis
+router.post('/:id/ai-analysis', generateAIAnalysis);
 
-// PUT /api/emission-results/:id/rekomendasi - Update emission result rekomendasi only
-router.put('/:id/rekomendasi', updateEmissionResultRekomendasi);
+// PUT /api/emission-results/:id/analisis - Update emission result analisis only
+router.put('/:id/analisis', updateEmissionResultAnalisis);
 
 // PUT /api/emission-results/:id - Update emission result (full update)
 router.put('/:id', updateEmissionResult);
