@@ -6,6 +6,38 @@ const prisma = new PrismaClient();
 // JWT Secret Key (dalam production, gunakan environment variable)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+// GET - Get current user profile (from JWT token)
+const getCurrentUser = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    console.log('getCurrentUser - User:', { 
+      user_id: user.user_id, 
+      email: user.email,
+      name: user.name 
+    });
+    
+    // Return only basic user info (name and email)
+    res.json({
+      success: true,
+      data: {
+        user_id: user.user_id,
+        name: user.name,
+        email: user.email,
+        company_id: user.company_id
+      },
+      message: 'Current user profile retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve current user profile',
+      error: error.message
+    });
+  }
+};
+
 // GET - Get all users
 const getAllUsers = async (req, res) => {
   try {
@@ -342,6 +374,7 @@ const checkUserCompany = async (req, res) => {
 };
 
 module.exports = {
+  getCurrentUser,
   getAllUsers,
   getUserById,
   createUser,

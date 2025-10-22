@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+  getCurrentUser,
   getAllUsers,
   getUserById,
   createUser,
@@ -13,6 +14,9 @@ const { authenticateUser } = require('../middleware/authMiddleware');
 
 // GET /api/users - Get all users (requires login)
 router.get('/', authenticateUser, getAllUsers);
+
+// GET /api/users/profile - Get current user profile (requires login)
+router.get('/profile', authenticateUser, getCurrentUser);
 
 // GET /api/users/:id - Get user by ID (requires login)
 router.get('/:id', authenticateUser, getUserById);

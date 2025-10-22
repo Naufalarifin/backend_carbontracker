@@ -279,11 +279,40 @@ const createEmissionResult = async (req, res) => {
     // Calculate emission categories
     const emissionCategories = calculateEmissionCategories(details, total_emission);
 
+    // Generate AI analysis and level
+    const emissionData = {
+      company: emissionInput.company,
+      details: details,
+      total_emission: total_emission
+    };
+
+    let analysis;
+    let computedLevel;
+    
+    try {
+      // Generate AI analysis
+      analysis = await aiRecommendationService.generateAnalysis(emissionData);
+      // Compute sector-based level from company profile
+      computedLevel = aiRecommendationService.computeSectorLevel(
+        emissionInput.company,
+        total_emission
+      );
+    } catch (aiError) {
+      console.warn('AI service failed, using basic analysis:', aiError.message);
+      // Fallback to basic analysis
+      analysis = aiRecommendationService.generateBasicAnalysis(emissionData);
+      computedLevel = aiRecommendationService.computeSectorLevel(
+        emissionInput.company,
+        total_emission
+      );
+    }
+
     const emissionResult = await prisma.emissionresult.create({
       data: {
         input_id: parseInt(input_id),
         total_emission: total_emission,
-        analisis: null,
+        analisis: analysis,
+        level: computedLevel || undefined,
         energi: emissionCategories.energi,
         transportasi: emissionCategories.transportasi,
         produksi: emissionCategories.produksi,
@@ -303,10 +332,23 @@ const createEmissionResult = async (req, res) => {
       }
     });
 
+    // Get priority actions for additional info
+    const priorityActions = aiRecommendationService.getPriorityActions(details);
+    const emissionLevel = aiRecommendationService.categorizeEmissionLevel(total_emission);
+
     res.status(201).json({
       success: true,
-      data: emissionResult,
-      message: 'Emission result created successfully'
+      data: {
+        ...emissionResult,
+        ai_analysis: {
+          emission_level: emissionLevel,
+          sector_level: computedLevel || null,
+          priority_actions: priorityActions,
+          generated_at: new Date().toISOString(),
+          ai_used: true
+        }
+      },
+      message: 'Emission result created successfully with full analysis'
     });
   } catch (error) {
     console.error('Error creating emission result:', error);
