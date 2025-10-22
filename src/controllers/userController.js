@@ -287,11 +287,66 @@ const loginUser = async (req, res) => {
   }
 };
 
+// GET - Check if user has company (for frontend to determine UI flow)
+const checkUserCompany = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    console.log('checkUserCompany - User:', { 
+      user_id: user.user_id, 
+      company_id: user.company_id,
+      email: user.email 
+    });
+    
+    if (user.company_id) {
+      // User has a company, get basic company info
+      const company = await prisma.company.findUnique({
+        where: { company_id: user.company_id },
+        select: {
+          company_id: true,
+          name: true,
+          address: true,
+          jenis_perusahaan: true,
+          jumlah_karyawan: true,
+          pendapatan_perbulan: true,
+          ton_barang_perbulan: true,
+          unit_produk_perbulan: true
+        }
+      });
+      
+      if (company) {
+        return res.json({
+          success: true,
+          hasCompany: true,
+          data: company,
+          message: 'User has a company'
+        });
+      }
+    }
+    
+    // User doesn't have a company
+    res.json({
+      success: true,
+      hasCompany: false,
+      data: null,
+      message: 'User does not have a company'
+    });
+  } catch (error) {
+    console.error('Error checking user company:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check user company',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
   createUser,
   createUserWithCompany,
   deleteUser,
-  loginUser
+  loginUser,
+  checkUserCompany
 };

@@ -3,6 +3,120 @@ const aiRecommendationService = require('../services/aiRecommendationService');
 
 const prisma = new PrismaClient();
 
+// Helper function to get category from emissionsource
+const getEmissionCategory = (emissionSource) => {
+  // Use kategori from database, fallback to default if null
+  const category = emissionSource.kategori?.toLowerCase();
+  
+  // Validate category is one of the 4 allowed categories
+  const validCategories = ['energi', 'transportasi', 'produksi', 'limbah'];
+  
+  if (validCategories.includes(category)) {
+    return category;
+  }
+  
+  // Default to energi if kategori is null or invalid
+  return 'energi';
+};
+
+// Helper function to generate AI explanation for emission category
+const generateCategoryExplanation = (category, percentage, sourceName) => {
+  const explanations = {
+    energi: `Konsumsi energi ${sourceName} mencapai ${percentage.toFixed(1)}% karena penggunaan listrik dan bahan bakar yang intensif dalam operasional perusahaan.`,
+    transportasi: `Aktivitas transportasi ${sourceName} menyumbang ${percentage.toFixed(1)}% emisi karena pergerakan kendaraan dan logistik distribusi yang tinggi.`,
+    produksi: `Proses produksi ${sourceName} menghasilkan ${percentage.toFixed(1)}% emisi karena penggunaan material dan energi dalam manufaktur.`,
+    limbah: `Pengelolaan limbah ${sourceName} berkontribusi ${percentage.toFixed(1)}% emisi karena proses pembuangan dan treatment yang memerlukan energi.`
+  };
+  
+  return explanations[category] || `Kategori ${category} dengan sumber ${sourceName} menyumbang ${percentage.toFixed(1)}% dari total emisi.`;
+};
+
+// Helper function to calculate emission categories
+const calculateEmissionCategories = (emissionDetails, totalEmission) => {
+  const categories = {
+    energi: [],
+    transportasi: [],
+    produksi: [],
+    limbah: []
+  };
+  
+  // Group emissions by category from database
+  emissionDetails.forEach(detail => {
+    const category = getEmissionCategory(detail.emissionsource);
+    const percentage = (detail.emission_value / totalEmission) * 100;
+    
+    categories[category].push({
+      percentage: percentage,
+      source_name: detail.emissionsource.name,
+      explanation: generateCategoryExplanation(category, percentage, detail.emissionsource.name)
+    });
+  });
+  
+  // Sort each category by percentage (highest first)
+  Object.keys(categories).forEach(category => {
+    categories[category].sort((a, b) => b.percentage - a.percentage);
+  });
+  
+  return categories;
+};
+
+// GET - Get latest emission result for user's company
+const getLatestEmissionResult = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view emission results'
+      });
+    }
+    
+    const latestEmissionResult = await prisma.emissionresult.findFirst({
+      where: {
+        emissioninput: {
+          company_id: user.company_id
+        }
+      },
+      include: {
+        emissioninput: {
+          include: {
+            company: true,
+            emissioninputdetail: {
+              include: {
+                emissionsource: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        result_id: 'desc'
+      }
+    });
+    
+    if (!latestEmissionResult) {
+      return res.status(404).json({
+        success: false,
+        message: 'No emission results found for your company'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: latestEmissionResult,
+      message: 'Latest emission result retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting latest emission result:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve latest emission result',
+      error: error.message
+    });
+  }
+};
+
 // GET - Get all emission results (filtered by user's company via emissioninput)
 const getAllEmissionResults = async (req, res) => {
   try {
@@ -155,16 +269,25 @@ const createEmissionResult = async (req, res) => {
     // Compute total_emission from emissioninputdetail sum
     const details = await prisma.emissioninputdetail.findMany({
       where: { input_id: parseInt(input_id) },
-      select: { emission_value: true }
+      include: {
+        emissionsource: true
+      }
     });
 
     const total_emission = details.reduce((sum, d) => sum + (d.emission_value || 0), 0);
+
+    // Calculate emission categories
+    const emissionCategories = calculateEmissionCategories(details, total_emission);
 
     const emissionResult = await prisma.emissionresult.create({
       data: {
         input_id: parseInt(input_id),
         total_emission: total_emission,
-        analisis: null
+        analisis: null,
+        energi: emissionCategories.energi,
+        transportasi: emissionCategories.transportasi,
+        produksi: emissionCategories.produksi,
+        limbah: emissionCategories.limbah
       },
       include: {
         emissioninput: {
@@ -343,6 +466,78 @@ const deleteEmissionResult = async (req, res) => {
   }
 };
 
+// POST - Update emission categories for existing result
+const updateEmissionCategories = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get emission result with details
+    const emissionResult = await prisma.emissionresult.findUnique({
+      where: { result_id: parseInt(id) },
+      include: {
+        emissioninput: {
+          include: {
+            emissioninputdetail: {
+              include: {
+                emissionsource: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!emissionResult) {
+      return res.status(404).json({
+        success: false,
+        message: 'Emission result not found'
+      });
+    }
+
+    // Calculate emission categories
+    const emissionCategories = calculateEmissionCategories(
+      emissionResult.emissioninput.emissioninputdetail, 
+      emissionResult.total_emission
+    );
+
+    // Update emission result with categories
+    const updatedResult = await prisma.emissionresult.update({
+      where: { result_id: parseInt(id) },
+      data: {
+        energi: emissionCategories.energi,
+        transportasi: emissionCategories.transportasi,
+        produksi: emissionCategories.produksi,
+        limbah: emissionCategories.limbah
+      },
+      include: {
+        emissioninput: {
+          include: {
+            company: true,
+            emissioninputdetail: {
+              include: {
+                emissionsource: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: updatedResult,
+      message: 'Emission categories updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating emission categories:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update emission categories',
+      error: error.message
+    });
+  }
+};
+
 // POST - Generate AI analysis for emission result
 const generateAIAnalysis = async (req, res) => {
   try {
@@ -513,12 +708,14 @@ const getEmissionResultWithAnalysis = async (req, res) => {
 };
 
 module.exports = {
+  getLatestEmissionResult,
   getAllEmissionResults,
   getEmissionResultById,
   createEmissionResult,
   updateEmissionResultAnalisis,
   updateEmissionResult,
   deleteEmissionResult,
+  updateEmissionCategories,
   generateAIAnalysis,
   getEmissionResultWithAnalysis
 };

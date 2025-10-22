@@ -6,7 +6,8 @@ const {
   createUser,
   createUserWithCompany,
   deleteUser,
-  loginUser
+  loginUser,
+  checkUserCompany
 } = require('../controllers/userController');
 const { authenticateUser } = require('../middleware/authMiddleware');
 
@@ -24,6 +25,9 @@ router.post('/with-company', createUserWithCompany);
 
 // POST /api/users/login - Login user (PUBLIC - no auth required)
 router.post('/login', loginUser);
+
+// GET /api/users/company-status - Check if user has company (requires login)
+router.get('/company-status', authenticateUser, checkUserCompany);
 
 // DELETE /api/users/:id - Delete user by ID (requires login)
 router.delete('/:id', authenticateUser, deleteUser);

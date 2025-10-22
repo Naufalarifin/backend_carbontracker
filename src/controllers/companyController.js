@@ -7,14 +7,20 @@ const getAllCompanies = async (req, res) => {
   try {
     const user = req.user;
     
+    console.log('getAllCompanies - User:', { 
+      user_id: user.user_id, 
+      company_id: user.company_id,
+      email: user.email 
+    });
+    
     // If user has a company, only show their company
     if (user.company_id) {
       const company = await prisma.company.findUnique({
         where: { company_id: user.company_id },
         include: {
-          users: true,
-          inputs: true,
-          certificates: true
+          user: true,
+          emissioninput: true,
+          certificate: true
         }
       });
       
@@ -65,9 +71,9 @@ const getCompanyById = async (req, res) => {
     const company = await prisma.company.findUnique({
       where: { company_id: parseInt(id) },
       include: {
-        users: true,
-        inputs: true,
-        certificates: true
+        user: true,
+        emissioninput: true,
+        certificate: true
       }
     });
 
@@ -266,9 +272,9 @@ const updateCompany = async (req, res) => {
         ton_barang_perbulan: ton_barang_perbulan ? parseFloat(ton_barang_perbulan) : null
       },
       include: {
-        users: true,
-        inputs: true,
-        certificates: true
+        user: true,
+        emissioninput: true,
+        certificate: true
       }
     });
 
@@ -330,11 +336,66 @@ const deleteCompany = async (req, res) => {
   }
 };
 
+// GET - Check if user has company (for frontend to determine UI flow) - NO RESTRICTIONS
+const checkUserCompany = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    console.log('checkUserCompany - User:', { 
+      user_id: user.user_id, 
+      company_id: user.company_id,
+      email: user.email 
+    });
+    
+    if (user.company_id) {
+      // User has a company, get basic company info
+      const company = await prisma.company.findUnique({
+        where: { company_id: user.company_id },
+        select: {
+          company_id: true,
+          name: true,
+          address: true,
+          jenis_perusahaan: true,
+          jumlah_karyawan: true,
+          pendapatan_perbulan: true,
+          ton_barang_perbulan: true,
+          unit_produk_perbulan: true
+        }
+      });
+      
+      if (company) {
+        return res.json({
+          success: true,
+          hasCompany: true,
+          data: company,
+          message: 'User has a company'
+        });
+      }
+    }
+    
+    // User doesn't have a company
+    res.json({
+      success: true,
+      hasCompany: false,
+      data: null,
+      message: 'User does not have a company'
+    });
+  } catch (error) {
+    console.error('Error checking user company:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check user company',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getAllCompanies,
   getCompanyById,
   createCompany,
   createCompanyForUser,
   updateCompany,
-  deleteCompany
+  deleteCompany,
+  checkUserCompany
 };

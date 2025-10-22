@@ -64,6 +64,10 @@ model emissionresult {
   total_emission Float
   analisis       String?       @db.Text
   level          String?
+  energi         Json?         // Array: [{percentage, source_name, explanation}]
+  transportasi   Json?         // Array: [{percentage, source_name, explanation}]
+  produksi       Json?         // Array: [{percentage, source_name, explanation}]
+  limbah         Json?         // Array: [{percentage, source_name, explanation}]
   emissioninput  emissioninput @relation(fields: [input_id], references: [input_id], map: "EmissionResult_input_id_fkey")
 }
 

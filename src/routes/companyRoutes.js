@@ -6,12 +6,16 @@ const {
   createCompany,
   createCompanyForUser,
   updateCompany,
-  deleteCompany
+  deleteCompany,
+  checkUserCompany
 } = require('../controllers/companyController');
 const { authenticateUser } = require('../middleware/authMiddleware');
 
 // GET /api/companies - Get all companies (requires login)
 router.get('/', authenticateUser, getAllCompanies);
+
+// GET /api/companies/check - Check if user has company (requires login) - MUST BE BEFORE /:id
+router.get('/check', authenticateUser, checkUserCompany);
 
 // GET /api/companies/:id - Get company by ID (requires login)
 router.get('/:id', authenticateUser, getCompanyById);
