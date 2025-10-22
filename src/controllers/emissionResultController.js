@@ -31,36 +31,166 @@ const generateCategoryExplanation = (category, percentage, sourceName) => {
   return explanations[category] || `Kategori ${category} dengan sumber ${sourceName} menyumbang ${percentage.toFixed(1)}% dari total emisi.`;
 };
 
-// Helper function to calculate emission categories
-const calculateEmissionCategories = (emissionDetails, totalEmission) => {
-  const categories = {
-    energi: [],
-    transportasi: [],
-    produksi: [],
-    limbah: []
+// Helper function to generate category analysis (combined analysis for entire category)
+const generateCategoryAnalysis = (category, percentage, sources) => {
+  const sourceNames = sources.join(', ');
+  
+  const analyses = {
+    energi: `Kategori energi menyumbang ${percentage.toFixed(1)}% dari total emisi melalui sumber-sumber seperti ${sourceNames}. Konsumsi energi yang tinggi menunjukkan kebutuhan untuk optimasi penggunaan listrik dan bahan bakar dalam operasional perusahaan.`,
+    transportasi: `Kategori transportasi berkontribusi ${percentage.toFixed(1)}% dari total emisi melalui aktivitas ${sourceNames}. Tingginya emisi transportasi menunjukkan perlunya strategi logistik yang lebih efisien dan penggunaan kendaraan yang lebih ramah lingkungan.`,
+    produksi: `Kategori produksi menghasilkan ${percentage.toFixed(1)}% dari total emisi melalui proses ${sourceNames}. Emisi produksi yang signifikan menunjukkan kebutuhan untuk optimasi proses manufaktur dan penggunaan material yang lebih berkelanjutan.`,
+    limbah: `Kategori limbah menyumbang ${percentage.toFixed(1)}% dari total emisi melalui pengelolaan ${sourceNames}. Emisi limbah menunjukkan pentingnya implementasi sistem pengelolaan limbah yang lebih efisien dan proses daur ulang yang optimal.`
   };
   
-  // Group emissions by category from database
-  emissionDetails.forEach(detail => {
-    const category = getEmissionCategory(detail.emissionsource);
-    const percentage = (detail.emission_value / totalEmission) * 100;
-    
-    categories[category].push({
-      percentage: percentage,
-      source_name: detail.emissionsource.name,
-      explanation: generateCategoryExplanation(category, percentage, detail.emissionsource.name)
-    });
-  });
-  
-  // Sort each category by percentage (highest first)
-  Object.keys(categories).forEach(category => {
-    categories[category].sort((a, b) => b.percentage - a.percentage);
-  });
-  
-  return categories;
+  return analyses[category] || `Kategori ${category} berkontribusi ${percentage.toFixed(1)}% dari total emisi melalui sumber-sumber seperti ${sourceNames}.`;
 };
 
-// GET - Get latest emission result for user's company
+// Helper function to calculate emission categories with debug info
+const calculateEmissionCategories = (emissionDetails, totalEmission) => {
+  const categories = {
+    energi: { totalEmission: 0, sources: [] },
+    transportasi: { totalEmission: 0, sources: [] },
+    produksi: { totalEmission: 0, sources: [] },
+    limbah: { totalEmission: 0, sources: [] }
+  };
+  
+  console.log('=== DEBUG: Calculating Emission Categories ===');
+  console.log('Total Emission:', totalEmission);
+  console.log('Emission Details Count:', emissionDetails.length);
+  
+  // Group emissions by category from database
+  emissionDetails.forEach((detail, index) => {
+    const category = getEmissionCategory(detail.emissionsource);
+    
+    console.log(`Detail ${index + 1}:`, {
+      source_name: detail.emissionsource.name,
+      kategori_from_db: detail.emissionsource.kategori,
+      category_mapped: category,
+      emission_value: detail.emission_value
+    });
+    
+    categories[category].totalEmission += detail.emission_value;
+    categories[category].sources.push(detail.emissionsource.name);
+  });
+  
+  // Calculate final result with single item per category
+  const result = {};
+  Object.keys(categories).forEach(category => {
+    const percentage = (categories[category].totalEmission / totalEmission) * 100;
+    const sourcesCount = categories[category].sources.length;
+    
+    console.log(`${category}:`, {
+      total_emission: categories[category].totalEmission,
+      percentage: percentage.toFixed(2) + '%',
+      sources_count: sourcesCount,
+      sources: categories[category].sources
+    });
+    
+    if (percentage > 0) {
+      result[category] = [{
+        name: category,
+        percentage: percentage,
+        analysis: generateCategoryAnalysis(category, percentage, categories[category].sources)
+      }];
+    } else {
+      result[category] = [];
+    }
+  });
+  
+  const grandTotal = Object.values(result).reduce((sum, categoryArray) => {
+    return sum + categoryArray.reduce((catSum, item) => catSum + item.percentage, 0);
+  }, 0);
+  
+  console.log('Grand Total:', grandTotal.toFixed(2) + '%');
+  console.log('=== END DEBUG ===');
+  
+  return result;
+};
+
+// GET - Get emission result with debug info for category calculation
+const getEmissionResultDebug = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view emission results'
+      });
+    }
+    
+    const emissionResult = await prisma.emissionresult.findUnique({
+      where: { result_id: parseInt(id) },
+      include: {
+        emissioninput: {
+          where: {
+            company_id: user.company_id
+          },
+          include: {
+            company: true,
+            emissioninputdetail: {
+              include: {
+                emissionsource: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!emissionResult) {
+      return res.status(404).json({
+        success: false,
+        message: 'Emission result not found or does not belong to your company'
+      });
+    }
+
+    // Calculate categories with debug info
+    const emissionCategories = calculateEmissionCategories(
+      emissionResult.emissioninput.emissioninputdetail, 
+      emissionResult.total_emission
+    );
+
+    // Calculate totals for verification
+    const categoryTotals = {};
+    Object.keys(emissionCategories).forEach(category => {
+      const total = emissionCategories[category].reduce((sum, item) => sum + item.percentage, 0);
+      categoryTotals[category] = total;
+    });
+
+    const grandTotal = Object.values(categoryTotals).reduce((sum, total) => sum + total, 0);
+
+    res.json({
+      success: true,
+      data: {
+        ...emissionResult,
+        debug_info: {
+          total_emission: emissionResult.total_emission,
+          category_totals: categoryTotals,
+          grand_total_percentage: grandTotal,
+          emission_details_count: emissionResult.emissioninput.emissioninputdetail.length,
+          emission_details: emissionResult.emissioninput.emissioninputdetail.map(detail => ({
+            source_name: detail.emissionsource.name,
+            kategori_from_db: detail.emissionsource.kategori,
+            emission_value: detail.emission_value,
+            percentage: ((detail.emission_value / emissionResult.total_emission) * 100).toFixed(2) + '%'
+          }))
+        }
+      },
+      message: 'Emission result with debug info retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting emission result debug:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve emission result debug',
+      error: error.message
+    });
+  }
+};
+
+// GET - Get latest emission result for user's company with detailed breakdown
 const getLatestEmissionResult = async (req, res) => {
   try {
     const user = req.user;
@@ -101,11 +231,45 @@ const getLatestEmissionResult = async (req, res) => {
         message: 'No emission results found for your company'
       });
     }
-    
+
+    // Calculate percentage for each emission detail
+    const totalEmission = latestEmissionResult.total_emission;
+    const emissionDetailsWithPercentage = latestEmissionResult.emissioninput.emissioninputdetail.map(detail => {
+      const percentage = (detail.emission_value / totalEmission) * 100;
+      return {
+        detail_id: detail.detail_id,
+        source_name: detail.emissionsource.name,
+        kategori: detail.emissionsource.kategori,
+        unit: detail.emissionsource.unit,
+        emission_factor: detail.emissionsource.emission_factor,
+        value: detail.value,
+        emission_value: detail.emission_value,
+        percentage: percentage,
+        percentage_formatted: percentage.toFixed(2) + '%'
+      };
+    });
+
+    // Sort by percentage (highest first)
+    emissionDetailsWithPercentage.sort((a, b) => b.percentage - a.percentage);
+
     res.json({
       success: true,
-      data: latestEmissionResult,
-      message: 'Latest emission result retrieved successfully'
+      data: {
+        ...latestEmissionResult,
+        emission_details_breakdown: emissionDetailsWithPercentage,
+        summary: {
+          total_emission: totalEmission,
+          total_details: emissionDetailsWithPercentage.length,
+          top_contributor: emissionDetailsWithPercentage[0] || null,
+          category_breakdown: {
+            energi: emissionDetailsWithPercentage.filter(d => d.kategori === 'energi').length,
+            transportasi: emissionDetailsWithPercentage.filter(d => d.kategori === 'transportasi').length,
+            produksi: emissionDetailsWithPercentage.filter(d => d.kategori === 'produksi').length,
+            limbah: emissionDetailsWithPercentage.filter(d => d.kategori === 'limbah').length
+          }
+        }
+      },
+      message: 'Latest emission result with detailed breakdown retrieved successfully'
     });
   } catch (error) {
     console.error('Error getting latest emission result:', error);
@@ -750,6 +914,7 @@ const getEmissionResultWithAnalysis = async (req, res) => {
 };
 
 module.exports = {
+  getEmissionResultDebug,
   getLatestEmissionResult,
   getAllEmissionResults,
   getEmissionResultById,

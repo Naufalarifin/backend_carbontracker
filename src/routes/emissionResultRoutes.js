@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+  getEmissionResultDebug,
   getLatestEmissionResult,
   getAllEmissionResults,
   getEmissionResultById,
@@ -25,6 +26,9 @@ router.get('/:id', authenticateUser, getEmissionResultById);
 
 // GET /api/emission-results/:id/analysis - Get emission result with AI analysis (requires login)
 router.get('/:id/analysis', authenticateUser, getEmissionResultWithAnalysis);
+
+// GET /api/emission-results/:id/debug - Get emission result with debug info (requires login)
+router.get('/:id/debug', authenticateUser, getEmissionResultDebug);
 
 // POST /api/emission-results - Create new emission result (requires login)
 router.post('/', authenticateUser, createEmissionResult);
