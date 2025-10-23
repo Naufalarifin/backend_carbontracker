@@ -11,7 +11,8 @@ const {
   deleteEmissionResult,
   updateEmissionCategories,
   generateAIAnalysis,
-  getEmissionResultWithAnalysis
+  getEmissionResultWithAnalysis,
+  getEmissionHistory
 } = require('../controllers/emissionResultController');
 const { authenticateUser } = require('../middleware/authMiddleware');
 
@@ -20,6 +21,9 @@ router.get('/', authenticateUser, getAllEmissionResults);
 
 // GET /api/emission-results/latest - Get latest emission result (requires login)
 router.get('/latest', authenticateUser, getLatestEmissionResult);
+
+// GET /api/emission-results/history - Get emission history for last 12 months (requires login)
+router.get('/history', authenticateUser, getEmissionHistory);
 
 // GET /api/emission-results/:id - Get emission result by ID (requires login)
 router.get('/:id', authenticateUser, getEmissionResultById);

@@ -190,6 +190,179 @@ const getEmissionResultDebug = async (req, res) => {
   }
 };
 
+// GET - Get emission history for last 12 months with level percentages
+const getEmissionHistory = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    if (!user.company_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User must belong to a company to view emission history'
+      });
+    }
+
+    // Get company info for level calculation
+    const company = await prisma.company.findUnique({
+      where: { company_id: user.company_id }
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    // Get emission results for last 12 months
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    const emissionResults = await prisma.emissionresult.findMany({
+      where: {
+        emissioninput: {
+          company_id: user.company_id,
+          created_at: {
+            gte: twelveMonthsAgo
+          }
+        }
+      },
+      include: {
+        emissioninput: {
+          include: {
+            company: true
+          }
+        }
+      },
+      orderBy: {
+        emissioninput: {
+          created_at: 'desc'
+        }
+      }
+    });
+
+    // Calculate level percentage for each result
+    const historyData = emissionResults.map(result => {
+      const levelPercentage = calculateLevelPercentage(company, result.total_emission);
+      const month = new Date(result.emissioninput.created_at).toLocaleDateString('id-ID', { 
+        month: 'short', 
+        year: 'numeric' 
+      });
+      
+      return {
+        result_id: result.result_id,
+        month: month,
+        total_emission: result.total_emission,
+        level: result.level,
+        level_percentage: levelPercentage,
+        created_at: result.emissioninput.created_at
+      };
+    });
+
+    // Group by month and get the latest result per month
+    const monthlyData = {};
+    historyData.forEach(item => {
+      const monthKey = new Date(item.created_at).toISOString().substring(0, 7); // YYYY-MM
+      if (!monthlyData[monthKey] || new Date(item.created_at) > new Date(monthlyData[monthKey].created_at)) {
+        monthlyData[monthKey] = item;
+      }
+    });
+
+    // Convert to array and sort by date
+    const sortedHistory = Object.values(monthlyData)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      .slice(-12); // Get last 12 months
+
+    // Calculate statistics
+    const totalMonths = sortedHistory.length;
+    const averageEmission = totalMonths > 0 
+      ? sortedHistory.reduce((sum, item) => sum + item.total_emission, 0) / totalMonths 
+      : 0;
+    
+    const levelDistribution = {
+      baik: sortedHistory.filter(item => item.level === 'Baik').length,
+      sedang: sortedHistory.filter(item => item.level === 'Sedang').length,
+      buruk: sortedHistory.filter(item => item.level === 'Buruk').length
+    };
+
+    res.json({
+      success: true,
+      data: {
+        history: sortedHistory,
+        statistics: {
+          total_months: totalMonths,
+          average_emission: averageEmission,
+          level_distribution: levelDistribution,
+          company_info: {
+            name: company.name,
+            jenis_perusahaan: company.jenis_perusahaan
+          }
+        }
+      },
+      message: `Emission history retrieved successfully (${totalMonths} months available)`
+    });
+  } catch (error) {
+    console.error('Error getting emission history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve emission history',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to calculate level percentage based on sector thresholds
+const calculateLevelPercentage = (company, totalEmissionKg) => {
+  if (!company || typeof totalEmissionKg !== 'number') return 0;
+
+  const sector = (company.jenis_perusahaan || '').toLowerCase();
+  const totalEmissionTon = totalEmissionKg / 1000;
+
+  let intensity;
+  let thresholds = { baik: 0, sedang: 0, buruk: 0 };
+
+  // Set thresholds based on sector (same logic as computeSectorLevel)
+  if (sector.includes('kantor') || sector.includes('startup') || sector.includes('it') || sector.includes('finansial')) {
+    const numEmployees = company.jumlah_karyawan;
+    if (!numEmployees || numEmployees <= 0) return 0;
+    intensity = totalEmissionTon / numEmployees;
+    thresholds = { baik: 3, sedang: 6, buruk: 6 };
+  } else {
+    const revenue = company.pendapatan_perbulan;
+    if (!revenue || revenue <= 0) return 0;
+    intensity = totalEmissionTon / revenue;
+
+    if (sector.includes('manufaktur') || sector.includes('produksi')) {
+      thresholds = { baik: 80, sedang: 150, buruk: 150 };
+    } else if (sector.includes('transport') || sector.includes('logistik')) {
+      thresholds = { baik: 1000, sedang: 3000, buruk: 3000 };
+    } else if (sector.includes('retail') || sector.includes('perdagangan')) {
+      thresholds = { baik: 150, sedang: 300, buruk: 300 };
+    } else if (sector.includes('energi') || sector.includes('tambang') || sector.includes('pertambangan')) {
+      thresholds = { baik: 10000, sedang: 20000, buruk: 20000 };
+    } else if (sector.includes('pemerintahan') || sector.includes('gedung') || sector.includes('perkantoran umum')) {
+      thresholds = { baik: 100, sedang: 250, buruk: 250 };
+    } else {
+      return 0; // Unknown sector
+    }
+  }
+
+  // Calculate percentage based on intensity vs thresholds
+  if (intensity <= thresholds.baik) {
+    // Baik: 0-20% range
+    const progress = (intensity / thresholds.baik) * 20;
+    return Math.min(20, Math.max(0, progress));
+  } else if (intensity <= thresholds.sedang) {
+    // Sedang: 21-45% range
+    const progress = 21 + ((intensity - thresholds.baik) / (thresholds.sedang - thresholds.baik)) * 24;
+    return Math.min(45, Math.max(21, progress));
+  } else {
+    // Buruk: 46-100% range
+    const progress = 46 + ((intensity - thresholds.sedang) / (thresholds.buruk * 2)) * 54;
+    return Math.min(100, Math.max(46, progress));
+  }
+};
+
 // GET - Get latest emission result for user's company with detailed breakdown
 const getLatestEmissionResult = async (req, res) => {
   try {
@@ -924,5 +1097,6 @@ module.exports = {
   deleteEmissionResult,
   updateEmissionCategories,
   generateAIAnalysis,
-  getEmissionResultWithAnalysis
+  getEmissionResultWithAnalysis,
+  getEmissionHistory
 };
